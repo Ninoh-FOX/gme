@@ -242,7 +242,9 @@ Shay Green <gblargg@gmail.com>
 
 ### for compiler in miyoo mini
 
+```
 mkdir build
 cd build
 cmake .. -DCMAKE_INSTALL_PREFIX="/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr" -DSDL_INCLUDE_DIR=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/include/SDL -DZLIB_INCLUDE_DIR=/opt/miyoomini-toolchain/arm-linux-gnueabihf/sysroot/usr/include -DENABLE_UBSAN=OFF
 make gme_player
+```
