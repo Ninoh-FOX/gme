@@ -14,7 +14,7 @@ if(SDL_FOUND)
         "${CMAKE_BINARY_DIR}/gme")
 
     add_executable(gme_player ${player_SRCS})
-    target_link_libraries(gme_player ${SDL_LIBRARY} gme)
+    target_link_libraries(gme_player ${SDL_LIBRARY} gme z mi_sys mi_gfx mi_ao mi_common)
 
     # Is not to be installed though
 else()
