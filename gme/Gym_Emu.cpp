@@ -162,7 +162,7 @@ static Music_Emu* new_gym_emu () { return BLARGG_NEW Gym_Emu ; }
 static Music_Emu* new_gym_file() { return BLARGG_NEW Gym_File; }
 
 static gme_type_t_ const gme_gym_type_ = { "Sega Genesis", 1, &new_gym_emu, &new_gym_file, "GYM", 0 };
-BLARGG_EXPORT extern gme_type_t const gme_gym_type = &gme_gym_type_;
+extern gme_type_t const gme_gym_type = &gme_gym_type_;
 
 // Setup
 
@@ -210,7 +210,7 @@ void Gym_Emu::mute_voices_( int mask )
 
 blargg_err_t Gym_Emu::load_mem_( byte const* in, long size )
 {
-	assert( offsetof (header_t,packed [4]) == header_size );
+	static_assert( offsetof (header_t,packed [4]) == header_size, "GYM Header layout incorrect!" );
 	int offset = 0;
 	RETURN_ERR( check_header( in, size, &offset ) );
 	set_voice_count( 8 );

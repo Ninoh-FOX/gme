@@ -2819,7 +2819,7 @@ static void * ym2612_init(void *param, int clock, int rate,
 	F2612->OPN.ST.clock = clock;
 #if RSM_ENABLE
 	F2612->OPN.ST.rate = 53267;
-	F2612->OPN.ST.rateratio = (INT32)(UINT32)((((UINT64)144 * rate) << RSM_FRAC) / clock);
+	F2612->OPN.ST.rateratio = (INT32)(UINT32)((((UINT64)144 * rate) << RSM_FRAC) / 7670454);
 	F2612->OPN.ST.framecnt = 1 << RSM_FRAC;
 	memset(&(F2612->OPN.ST.cur_sample), 0x00, sizeof(FMSAMPLE) * 2);
 	memset(&(F2612->OPN.ST.prev_sample), 0x00, sizeof(FMSAMPLE) * 2);
@@ -3104,5 +3104,6 @@ void Ym2612_MAME_Emu::write1(int addr, int data)
 
 void Ym2612_MAME_Emu::run(int pair_count, Ym2612_MAME_Emu::sample_t *out)
 {
+	(void) &Ym2612_MameImpl::TimerBOver; // squelch clang warning, which appears to be from a config choice
 	if ( impl ) Ym2612_MameImpl::ym2612_generate( impl, out, pair_count, 1);
 }

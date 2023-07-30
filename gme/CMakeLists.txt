@@ -14,13 +14,6 @@ set(libgme_SRCS Blip_Buffer.cpp
                 Music_Emu.cpp
                 )
 
-# static builds need to find static zlib (and static forms of other needed
-# libraries.  Ensure CMake looks only for static libs if we're doing a static
-# build.  See https://stackoverflow.com/a/44738756
-if(NOT BUILD_SHARED_LIBS)
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-endif()
-
 find_package(ZLIB QUIET)
 
 # Ay_Apu is very popular around here
@@ -111,6 +104,10 @@ if (USE_GME_NSF OR USE_GME_NSFE)
                 Nes_Namco_Apu.cpp
                 Nes_Oscs.cpp
                 Nes_Vrc6_Apu.cpp
+                Nes_Fds_Apu.cpp
+                Nes_Vrc7_Apu.cpp
+                ext/emu2413.c
+                ext/panning.c
                 Nsf_Emu.cpp
         )
 endif()
@@ -153,7 +150,7 @@ if (USE_GME_VGM)
 endif()
 
 # These headers are part of the generic gme interface.
-set (EXPORTED_HEADERS gme.h)
+set (EXPORTED_HEADERS gme.h blargg_source.h)
 
 # while building a macOS framework, exported headers must be in the source
 # list, or the header files aren't copied to the bundle.
@@ -184,6 +181,19 @@ else()
     message("ZLib library not found, disabling support for compressed formats such as VGZ")
 endif()
 
+if(USE_GME_SPC)
+    if(UNRAR_FOUND)
+        message(" ** unRAR library located, the RSN file format will be supported")
+        target_compile_definitions(gme PRIVATE -DRARDLL)
+        target_include_directories(gme PRIVATE ${UNRAR_INCLUDE_DIRS})
+        target_link_libraries(gme ${UNRAR_LIBRARIES})
+        # Is not to be installed though
+
+        set(PKG_CONFIG_UNRAR -lunrar) # evaluated in libgme.pc.in
+    else()
+        message("unRAR library not found, disabling support for the RSN file format")
+    endif()
+endif()
 # The version is the release.  The "soversion" is the API version.  As long
 # as only build fixes are performed (i.e. no backwards-incompatible changes
 # to the API), the SOVERSION should be the same even when bumping up VERSION.
@@ -191,7 +201,7 @@ endif()
 # Hopefully the API can stay compatible with old versions.
 set_target_properties(gme
     PROPERTIES VERSION ${GME_VERSION}
-               SOVERSION 0)
+               SOVERSION 1)
 
 # macOS framework build
 if(BUILD_FRAMEWORK)
@@ -205,7 +215,7 @@ if(BUILD_FRAMEWORK)
 endif()
 
 install(TARGETS gme LIBRARY DESTINATION lib${LIB_SUFFIX}
-                    RUNTIME DESTINATION bin  # DLL platforms
+                    RUNTIME DESTINATION bin # DLL platforms
                     ARCHIVE DESTINATION lib # DLL platforms
                     FRAMEWORK DESTINATION /Library/Frameworks) # macOS framework
 

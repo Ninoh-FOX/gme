@@ -4,7 +4,7 @@ project(libgme)
 include (CheckCXXCompilerFlag)
 
 # When version is changed, also change the one in gme/gme.h to match
-set(GME_VERSION 0.6.2 CACHE INTERNAL "libgme Version")
+set(GME_VERSION 0.7.0 CACHE INTERNAL "libgme Version")
 
 # 2.6+ always assumes FATAL_ERROR, but 2.4 and below don't.
 # Of course, 2.4 might work, in which case you're welcome to drop
@@ -87,6 +87,15 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
     # This has caused miscompilation of code already and there are other
     # potential uses; see https://bitbucket.org/mpyne/game-music-emu/issues/18/
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fwrapv")
+	
+	if (USE_GME_SPC)
+        list(APPEND CMAKE_MODULE_PATH "${CMAKE_HOME_DIRECTORY}/cmake")
+        find_package(UNRAR QUIET)
+        if (UNRAR_FOUND)
+            # POSIX Threading for unRAR
+            set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+        endif()
+    endif()
 
     if (NOT DEFINED LIBGME_SWITCH_FALLTHROUGH)
         check_cxx_compiler_flag (-Wimplicit-fallthrough __LIBGME_SWITCH_FALLTHROUGH_WARNINGS)

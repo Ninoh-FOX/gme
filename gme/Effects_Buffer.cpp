@@ -3,6 +3,7 @@
 #include "Effects_Buffer.h"
 
 #include <string.h>
+#include <algorithm>
 
 /* Copyright (C) 2003-2006 Shay Green. This module is free software; you
 can redistribute it and/or modify it under the terms of the GNU Lesser
@@ -23,16 +24,19 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA */
 
 typedef blargg_long fixed_t;
 
+using std::min;
+using std::max;
+
 #define TO_FIXED( f )   fixed_t ((f) * (1L << 15) + 0.5)
 #define FMUL( x, y )    (((x) * (y)) >> 15)
 
 const unsigned echo_size = 4096;
 const unsigned echo_mask = echo_size - 1;
-BOOST_STATIC_ASSERT( (echo_size & echo_mask) == 0 ); // must be power of 2
+static_assert( (echo_size & echo_mask) == 0, "echo_size must be a power of 2" );
 
 const unsigned reverb_size = 8192 * 2;
 const unsigned reverb_mask = reverb_size - 1;
-BOOST_STATIC_ASSERT( (reverb_size & reverb_mask) == 0 ); // must be power of 2
+static_assert( (reverb_size & reverb_mask) == 0, "reverb_size must be a power of 2" );
 
 Effects_Buffer::config_t::config_t()
 {
@@ -213,7 +217,7 @@ void Effects_Buffer::config( const config_t& cfg )
 			chan_types [i*chan_types_count+2].left   = &bufs [i*max_buf_count+5];
 			chan_types [i*chan_types_count+2].right  = &bufs [i*max_buf_count+6];
 		}
-		assert( 2 < chan_types_count );
+		static_assert( chan_types_count >= 3, "Need at least three audio channels for effects processing" );
 	}
 	else
 	{

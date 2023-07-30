@@ -114,7 +114,7 @@ bool Gb_Cpu::run( blargg_long cycle_count )
 		uint8_t r8_ [8]; // indexed registers (use R8 macro due to endian dependence)
 		uint16_t r16 [4]; // indexed pairs
 	};
-	BOOST_STATIC_ASSERT( sizeof rg == 8 && sizeof rp == 8 );
+	static_assert( sizeof rg == 8 && sizeof rp == 8, "Unhandled word size" );
 	
 	rg = r;
 	unsigned pc = r.pc;
@@ -260,7 +260,7 @@ loop:
 		if ( flags & z_flag )
 			goto loop;
 	call:
-		pc -= 2;
+		pc -= 2; // FALLTHRU
 	case 0xCD: // CALL (most-common)
 		data = pc + 2;
 		pc = GET_ADDR();
@@ -274,6 +274,7 @@ loop:
 	case 0xC8: // RNZ (next-most-common)
 		if ( !(flags & z_flag) )
 			goto loop;
+		// FALLTHRU
 	case 0xC9: // RET (most common)
 	ret:
 		pc = READ( sp );
@@ -431,7 +432,7 @@ loop:
 			goto rl_comm;
 		
 		case 0x3E: // SRL (HL)
-			data += 0x10; // bump up to 0x4n to avoid preserving sign bit
+			data += 0x10; /* fallthrough */ // bump up to 0x4n to avoid preserving sign bit
 		case 0x1E: // RR (HL)
 		case 0x0E: // RRC (HL)
 		case 0x2E: // SRA (HL)
@@ -439,7 +440,7 @@ loop:
 			goto rr_comm;
 		
 		case 0x38: case 0x39: case 0x3A: case 0x3B: case 0x3C: case 0x3D: case 0x3F: // SRL A
-			data += 0x10; // bump up to 0x4n
+			data += 0x10; /* fallthrough */ // bump up to 0x4n
 		case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1F: // RR A
 		case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: case 0x0F: // RRC A
 		case 0x28: case 0x29: case 0x2A: case 0x2B: case 0x2C: case 0x2D: case 0x2F: // SRA A
@@ -448,6 +449,7 @@ loop:
 		
 	} // CB op
 	assert( false ); // unhandled CB op
+	// fallthrough
 
 	case 0x07: // RLCA
 	case 0x17: // RLA
@@ -822,11 +824,11 @@ loop:
 	
 	case 0xA6: // AND (HL)
 		data = READ( rp.hl );
-		pc--;
+		pc--; // FALLTHRU
 	case 0xE6: // AND IMM
 		pc++;
 	and_comm:
-		rg.a &= data;
+		rg.a &= data; // FALLTHRU
 	case 0xA7: // AND A
 		flags = h_flag | (((rg.a - 1) >> 1) & z_flag);
 		goto loop;
@@ -842,11 +844,11 @@ loop:
 	
 	case 0xB6: // OR (HL)
 		data = READ( rp.hl );
-		pc--;
+		pc--; // FALLTHRU
 	case 0xF6: // OR IMM
 		pc++;
 	or_comm:
-		rg.a |= data;
+		rg.a |= data; // FALLTHRU
 	case 0xB7: // OR A
 		flags = ((rg.a - 1) >> 1) & z_flag;
 		goto loop;
@@ -862,7 +864,7 @@ loop:
 	
 	case 0xAE: // XOR (HL)
 		data = READ( rp.hl );
-		pc--;
+		pc--; // FALLTHRU
 	case 0xEE: // XOR IMM
 		pc++;
 	xor_comm:
@@ -879,7 +881,7 @@ loop:
 
 // Stack
 
-	case 0xF1: // POP FA
+	case 0xF1: // POP AF
 	case 0xC1: // POP BC
 	case 0xD1: // POP DE
 	case 0xE1: // POP HL (common)
@@ -888,7 +890,8 @@ loop:
 		sp = (sp + 2) & 0xFFFF;
 		if ( op != 0xF1 )
 			goto loop;
-		flags = rg.flags & 0xF0;
+		flags = rg.a & 0xF0;
+		rg.a = rg.flags;
 		goto loop;
 	
 	case 0xC5: // PUSH BC
@@ -903,8 +906,8 @@ loop:
 		data = rp.hl;
 		goto push;
 	
-	case 0xF5: // PUSH FA
-		data = (flags << 8) | rg.a;
+	case 0xF5: // PUSH AF
+		data = (rg.a << 8) | flags;
 		goto push;
 
 // Flow control
@@ -912,6 +915,7 @@ loop:
 	case 0xFF:
 		if ( pc == idle_addr + 1 )
 			goto stop;
+		// FALLTHRU
 	case 0xC7: case 0xCF: case 0xD7: case 0xDF:  // RST
 	case 0xE7: case 0xEF: case 0xF7:
 		data = pc;
