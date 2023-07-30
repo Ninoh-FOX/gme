@@ -2,7 +2,7 @@ Game_Music_Emu 0.7.0: Game Music Emulators
 ------------------------------------------
 Game_Music_Emu is a collection of video game music file emulators that
 support the following formats and systems:
-
+```
 AY        ZX Spectrum/Amstrad CPC
 GBS       Nintendo Game Boy
 GYM       Sega Genesis/Mega Drive
@@ -12,7 +12,7 @@ NSF/NSFE  Nintendo NES/Famicom (with VRC 6, Namco 106, and FME-7 sound)
 SAP       Atari systems using POKEY sound chip
 SPC/RSN   Super Nintendo/Super Famicom
 VGM/VGZ   Sega Master System/Mark III, Sega Genesis/Mega Drive,BBC Micro
-
+```
 Features:
 * C interface for use in C, C++, and other compatible languages
 * High emphasis has been placed on making the library very easy to use
