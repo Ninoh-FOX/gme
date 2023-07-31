@@ -4,6 +4,9 @@
 
 #include <string.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* Copyright (C) 2005-2010 by Shay Green. Permission is hereby granted, free of
 charge, to any person obtaining a copy of this software module and associated
@@ -20,6 +23,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
 
+#undef RETURN_ERR
 #define RETURN_ERR( expr ) \
 	do {\
 		gme_err_t err_ = (expr);\
@@ -28,7 +32,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
 	} while ( 0 )
 
 // Number of audio buffers per second. Adjust if you encounter audio skipping.
-const int fill_rate = 45;
+const int fill_rate = 80;
 
 // Simple sound driver using SDL
 typedef void (*sound_callback_t)( void* data, short* out, int count );
@@ -71,11 +75,50 @@ Music_Player::~Music_Player()
 	gme_free_info( track_info_ );
 }
 
-gme_err_t Music_Player::load_file( const char* path )
+gme_err_t Music_Player::load_file(const char* path , bool by_mem)
 {
 	stop();
 	
-	RETURN_ERR( gme_open_file( path, &emu_, sample_rate ) );
+	if ( by_mem )
+	{
+		printf( "Loading file %s by memory...\n", path );
+		fflush( stdout );
+
+		FILE *file = fopen(path, "rb");
+
+		if ( !file )
+			return "Can't load the file";
+
+		fseek(file, 0, SEEK_END);
+		size_t fileSize = ftell(file);
+		fseek(file, 0, SEEK_SET);
+		unsigned char *buf = (unsigned char *)malloc(fileSize);
+
+		if ( !buf )
+			return "Out of memory";
+
+		if ( fread(buf, 1, fileSize, file) < fileSize)
+		{
+			free(buf);
+			fclose(file);
+			return "Can't read a file";
+		}
+
+		fclose(file);
+
+		const char *err = gme_open_data( buf, (long)fileSize, &emu_, sample_rate );
+		free(buf);
+		if (err != 0)
+			return err;
+	}
+	else
+	{
+		printf( "Loading file %s by file path...\n", path );
+		fflush( stdout );
+		const char *err = gme_open_file( path, &emu_, sample_rate );
+		if (err != 0)
+			return err;
+	}
 	
 	char m3u_path [256 + 5];
 	strncpy( m3u_path, path, 256 );
@@ -165,6 +208,13 @@ void Music_Player::set_tempo( double tempo )
 {
 	suspend();
 	gme_set_tempo( emu_, tempo );
+	resume();
+}
+
+void Music_Player::set_echo_disable( bool d )
+{
+	suspend();
+	gme_disable_echo( emu_, d );
 	resume();
 }
 

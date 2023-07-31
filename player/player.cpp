@@ -10,7 +10,8 @@ Button Y    Enable/disable accurate emulation
 Button X    Toggle track looping (infinite playback)
 R1/L1       Adjust tempo
 1-9         Toggle channel on/off
-Select      Reset tempo and turn channels back on */
+Select      Reset tempo and turn channels back on
+start       Toggle echo processing */
 
 // Make ISO C99 symbols available for snprintf, define must be set before any
 // system header includes
@@ -103,9 +104,19 @@ int main( int argc, char** argv )
 {
 	init();
 	
+	bool by_mem = false;
+	const char* path = "test.nsf";
+
+	for ( int i = 1; i < argc; ++i )
+	{
+		if ( SDL_strcmp( "-m", argv[i] ) == 0 )
+			by_mem = true;
+		else
+			path = argv[i];
+	}
+
 	// Load file
-	const char* path = (argc > 1 ? argv [argc - 1] : "test.nsf");
-	handle_error( player->load_file( path ) );
+	handle_error( player->load_file( path, by_mem ) );
 	start_track( 1, path );
 	
 	// Main loop
@@ -114,6 +125,7 @@ int main( int argc, char** argv )
 	bool running = true;
 	double stereo_depth = 0.0;
 	bool accurate = false;
+	bool echo_disabled = false;
 	bool fading_out = true;
 	int muting_mask = 0;
 	int fd = open("/dev/mi_ao", O_RDWR);
@@ -242,6 +254,13 @@ int main( int argc, char** argv )
 					if ( stereo_depth > 0.5 )
 						stereo_depth = 0;
 					player->set_stereo_depth( stereo_depth );
+					break;
+						
+				case SDLK_RETURN: // toggle echo on/off
+					echo_disabled = !echo_disabled;
+					player->set_echo_disable(echo_disabled);
+					printf( "%s\n", echo_disabled ? "SPC echo is disabled" : "SPC echo is enabled" );
+					fflush( stdout );
 					break;
 				
 				case SDLK_LSHIFT: // toggle loop

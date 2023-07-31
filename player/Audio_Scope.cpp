@@ -66,7 +66,7 @@ const char* Audio_Scope::init( int width, int height )
 	if ( !screen )
 		return "Couldn't create surface";
 	
-	static SDL_Color palette [2] = { {0, 0, 0, 0}, {0, 255, 0, 0} };
+	static SDL_Color palette [2] = { {0, 0, 0, 0}, {255, 40, 40, 0} };
 	SDL_SetColors( surface, palette, 1, 2 );
 	
 	return 0; // success
