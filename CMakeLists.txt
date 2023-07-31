@@ -1,15 +1,12 @@
 # CMake project definition file.
 project(libgme)
+cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 
 include (CheckCXXCompilerFlag)
+include (CTest)
 
 # When version is changed, also change the one in gme/gme.h to match
 set(GME_VERSION 0.7.0 CACHE INTERNAL "libgme Version")
-
-# 2.6+ always assumes FATAL_ERROR, but 2.4 and below don't.
-# Of course, 2.4 might work, in which case you're welcome to drop
-# down the requirement, but I can't test that.
-cmake_minimum_required(VERSION 2.6 FATAL_ERROR)
 
 # Default emulators to build (all of them! ;)
 if (NOT DEFINED USE_GME_AY)
@@ -71,6 +68,14 @@ option(ENABLE_UBSAN "Enable Undefined Behavior Sanitizer error-checking" ON)
 
 option(BUILD_FRAMEWORK "Build framework instead of dylib (on macOS)" OFF)
 
+
+# static builds need to find static zlib (and static forms of other needed
+# libraries.  Ensure CMake looks only for static libs if we're doing a static
+# build.  See https://stackoverflow.com/a/44738756
+if(NOT BUILD_SHARED_LIBS)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+endif()
+
 # Check for GCC/Clang "visibility" support.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
     OR
@@ -87,21 +92,14 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
     # This has caused miscompilation of code already and there are other
     # potential uses; see https://bitbucket.org/mpyne/game-music-emu/issues/18/
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fwrapv")
-	
-	if (USE_GME_SPC)
+
+    if (USE_GME_SPC)
         list(APPEND CMAKE_MODULE_PATH "${CMAKE_HOME_DIRECTORY}/cmake")
         find_package(UNRAR QUIET)
         if (UNRAR_FOUND)
             # POSIX Threading for unRAR
             set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
         endif()
-    endif()
-
-    if (NOT DEFINED LIBGME_SWITCH_FALLTHROUGH)
-        check_cxx_compiler_flag (-Wimplicit-fallthrough __LIBGME_SWITCH_FALLTHROUGH_WARNINGS)
-        set (LIBGME_SWITCH_FALLTHROUGH ${__LIBGME_SWITCH_FALLTHROUGH_WARNINGS}
-            CACHE BOOL "Set if the compiler will complain about implicit switch fallthrough"
-            )
     endif()
 
     if (ENABLE_UBSAN)
@@ -113,12 +111,6 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
         endif()
     endif()
 endif ()
-
-if(LIBGME_SWITCH_FALLTHROUGH)
-     # Avoid warning spam about switch fallthroughs, which are numerous in
-     # the codebase.
-     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wimplicit-fallthrough=0")
-endif()
 
 # Shared library defined here
 add_subdirectory(gme)
