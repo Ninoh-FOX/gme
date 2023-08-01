@@ -54,7 +54,7 @@ gme_err_t Music_Player::init( long rate )
 	sample_rate = rate;
 	
 	int min_size = sample_rate * 2 / fill_rate;
-	int buf_size = 512;
+	int buf_size = 256;
 	while ( buf_size < min_size )
 		buf_size *= 2;
 	
