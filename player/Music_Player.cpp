@@ -32,7 +32,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
 	} while ( 0 )
 
 // Number of audio buffers per second. Adjust if you encounter audio skipping.
-const int fill_rate = 80;
+const int fill_rate = 90;
 
 // Simple sound driver using SDL
 typedef void (*sound_callback_t)( void* data, short* out, int count );
