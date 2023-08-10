@@ -32,7 +32,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
 	} while ( 0 )
 
 // Number of audio buffers per second. Adjust if you encounter audio skipping.
-const int fill_rate = 60;
+const int fill_rate = 80;
 
 // Simple sound driver using SDL
 typedef void (*sound_callback_t)( void* data, short* out, int count );
@@ -54,7 +54,7 @@ gme_err_t Music_Player::init( long rate )
 	sample_rate = rate;
 	
 	int min_size = sample_rate * 2 / fill_rate;
-	int buf_size = 512;
+	int buf_size = 1024;
 	while ( buf_size < min_size )
 		buf_size *= 2;
 	
