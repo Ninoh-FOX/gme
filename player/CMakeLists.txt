@@ -2,8 +2,8 @@ find_package(SDL QUIET)
 
 set(player_SRCS Audio_Scope.cpp
                 Audio_Scope.h
-				cJSON.cpp
-				cJSON.h
+		cJSON.cpp
+                cJSON.h
                 Music_Player.cpp
                 Music_Player.h
                 player.cpp)
