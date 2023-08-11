@@ -23,6 +23,7 @@ int const scope_width = 512;
 
 #include "Music_Player.h"
 #include "Audio_Scope.h"
+#include "cJSON.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -46,6 +47,26 @@ static Audio_Scope* scope;
 static Music_Player* player;
 static short scope_buf [scope_width * 2];
 
+char* load_file(char const* path) { // for read config file in miyoo mini
+	char* buffer = 0;
+	long length = 0;
+	FILE * f = fopen(path, "rb"); //was "rb"
+	
+	if (f) {
+		fseek(f, 0, SEEK_END);
+		length = ftell(f);
+		fseek(f, 0, SEEK_SET);
+		buffer = (char*) malloc((length+1)*sizeof(char));
+		if (buffer) {
+			fread(buffer, sizeof(char), length, f);
+		}
+		fclose(f);
+	}
+	buffer[length] = '\0';
+	
+	return buffer;
+}
+
 static void init()
 {
 	// Start SDL
@@ -68,6 +89,71 @@ static void init()
 		handle_error( "Out of memory" );
 	handle_error( player->init() );
 	player->set_scope_buffer( scope_buf, scope_width * 2 );
+	
+	// Read config file in miyoo mini
+	const char *settings_file = getenv("SETTINGS_FILE");
+	if (settings_file == NULL) {
+		FILE* pipe = popen("dmesg | fgrep '[FSP] Flash is detected (0x1100, 0x68, 0x40, 0x18) ver1.1'", "r");
+		if (!pipe) {
+			settings_file = "/appconfigs/system.json";
+		} else {
+			char buffer[128];
+			int flash_detected = 0;
+			
+			while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+				if (strstr(buffer, "[FSP] Flash is detected (0x1100, 0x68, 0x40, 0x18) ver1.1") != NULL) {
+					flash_detected = 1;
+					break;
+				}
+			}
+			
+			pclose(pipe);
+			
+			if (flash_detected) {
+				settings_file = "/mnt/SDCARD/system.json";
+			} else {
+				settings_file = "/appconfigs/system.json";
+			}
+		}
+	}
+	
+	// Get brightness and volume in MIYOO MINI
+	cJSON* request_json = NULL;
+	cJSON* itemBrightness;
+	cJSON* itemVol;
+	
+	char *request_body = load_file(settings_file);
+	request_json = cJSON_Parse(request_body);
+	itemBrightness = cJSON_GetObjectItem(request_json, "brightness");
+	itemVol = cJSON_GetObjectItem(request_json, "vol");
+	int brightness = cJSON_GetNumberValue(itemBrightness);
+	int vol = cJSON_GetNumberValue(itemVol);
+	
+	cJSON_Delete(request_json);
+	free(request_body);
+	
+	// set brightness
+	int fb = open("/sys/class/pwm/pwmchip0/pwm0/duty_cycle", O_WRONLY);
+	if (fb >= 0) {
+		dprintf(fb, "%d", brightness * 10);
+		close(fb);
+	}
+
+	// set volume
+	int fv = open("/dev/mi_ao", O_RDWR);
+	if (fv >= 0) {
+		int buf2[] = {0, 0};
+		uint64_t buf1[] = {sizeof(buf2), (uintptr_t)buf2};
+						
+		// Get the current volume
+		ioctl(fv, MI_AO_GETVOLUME, buf1);
+		int recent_volume = buf2[1];
+		
+		buf2[1] = (vol * 3) - 60;
+						
+		if (buf2[1] != recent_volume) 
+			ioctl(fv, MI_AO_SETVOLUME, buf1);
+	}
 }
 
 static void start_track( int track, const char* path )
