@@ -176,6 +176,7 @@ int main( int argc, char** argv )
 					break;
 								
 				case SDLK_UP: // up volumen
+				case SDLK_RSUPER: // vol button MMP
 					if (fd >= 0) {
 						int buf2[] = {0, 0};
 						uint64_t buf1[] = {sizeof(buf2), (uintptr_t)buf2};
@@ -201,6 +202,7 @@ int main( int argc, char** argv )
 					break;
 				
 				case SDLK_DOWN: // down volumen
+				case SDLK_LSUPER: // vol button MMP
 					if (fd >= 0) {
 						int buf2[] = {0, 0};
 						uint64_t buf1[] = {sizeof(buf2), (uintptr_t)buf2};
