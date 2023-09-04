@@ -183,6 +183,7 @@ static void start_track( int track, const char* path )
 			seconds / 60, seconds % 60 ) )
 	{
 		SDL_WM_SetCaption( title, title );
+		strcpy(scope->title, title);
 	}
 }
 
@@ -297,7 +298,7 @@ int main( int argc, char** argv )
 						ioctl(fd, MI_AO_GETVOLUME, buf1);
 						int recent_volume = buf2[1];
 						
-						// Decrease volume by 3
+						// Upgrade volume by 3
 						buf2[1] -= 3;
 						
 						// Clamp the volume to be within [-60, 0]
@@ -347,13 +348,33 @@ int main( int argc, char** argv )
 				case SDLK_RETURN: // toggle echo on/off
 					echo_disabled = !echo_disabled;
 					player->set_echo_disable(echo_disabled);
-					printf( "%s\n", echo_disabled ? "SPC echo is disabled" : "SPC echo is enabled" );
+					if(echo_disabled)
+          {
+            printf( "SPC echo is disabled");
+            strcpy(scope->info, "SPC echo is disabled");
+          }
+          else
+          {
+            printf( "SPC echo is enabled");
+            strcpy(scope->info, "SPC echo is enabled");
+          }
+					//printf( "%s\n", echo_disabled ? "SPC echo is disabled" : "SPC echo is enabled" );
 					fflush( stdout );
 					break;
 				
 				case SDLK_LSHIFT: // toggle loop
 					player->set_fadeout( fading_out = !fading_out );
-					printf( "%s\n", fading_out ? "Will stop at track end" : "Playing forever" );
+					if(fading_out)
+          {
+            printf( "Will stop at track end" );
+            strcpy(scope->info, "Will stop at track end");
+          }
+          else
+          {
+            printf( "Playing forever" );
+            strcpy(scope->info, "Playing forever");
+          }
+					//printf( "%s\n", fading_out ? "Will stop at track end" : "Playing forever" );
 					break;
 				
 				case SDLK_RCTRL: // reset tempo and muting
@@ -390,7 +411,9 @@ void handle_error( const char* error )
 		sprintf( str, "Error: %s", error );
 		fprintf( stderr, "%s\n", str );
 		SDL_WM_SetCaption( str, str );
-		
+    strcpy(scope->title, str);
+
+
 		// wait for keyboard or mouse activity
 		SDL_Event e;
 		do

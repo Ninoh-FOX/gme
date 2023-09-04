@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include "averiafont.h"
 
 /* Copyright (C) 2005-2006 by Shay Green. Permission is hereby granted, free of
 charge, to any person obtaining a copy of this software module and associated
@@ -19,6 +20,21 @@ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
+
+void draw_text(SDL_Surface* dst, TTF_Font* f, char* text, Sint16 x, Sint16 y, Uint8 fR, Uint8 fG, Uint8 fB, Uint8 fA)
+{
+  if(dst && text && f)
+  {
+    SDL_Color foregroundColor={fR, fG, fB, fA};
+    SDL_Surface *textSurface=TTF_RenderText_Blended(f, text, foregroundColor);
+    if(textSurface)
+    {
+      SDL_Rect textLocation={x, y, 0, 0};
+      SDL_BlitSurface(textSurface, NULL, dst, &textLocation);
+      SDL_FreeSurface(textSurface);
+    }
+  }
+}
 
 int const step_bits = 8;
 int const step_unit = 1 << step_bits;
@@ -68,7 +84,11 @@ const char* Audio_Scope::init( int width, int height )
 	
 	static SDL_Color palette [2] = { {0, 0, 0, 0}, {255, 40, 40, 0} };
 	SDL_SetColors( surface, palette, 1, 2 );
-	
+
+  TTF_Init();
+  font=TTF_OpenFontRW(SDL_RWFromMem(averiafont_ttf,averiafont_ttf_len),1, 14);
+  strcpy(info, "");
+
 	return 0; // success
 }
 
@@ -103,7 +123,14 @@ const char* Audio_Scope::draw( const short* in, long count, double step )
 	
 	if ( SDL_BlitSurface( surface, &r, screen, &r ) < 0 )
 		return "Blit to screen failed";
-	
+
+  r={0,12,640,20};
+  SDL_FillRect(screen, &r, 0);
+  draw_text(screen, font, title, 12, 12, 255, 40, 40, 0);
+  r={0,220,640,20};
+  SDL_FillRect(screen, &r, 0);
+  draw_text(screen, font, info, 12, 220, 255, 40, 40, 0);
+
 	if ( SDL_Flip( screen ) < 0 )
 		return "Couldn't flip screen";
 	

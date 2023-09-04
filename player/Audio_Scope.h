@@ -4,9 +4,14 @@
 #define AUDIO_SCOPE_H
 
 #include "SDL.h"
+#include "SDL_ttf.h"
 
 class Audio_Scope {
 public:
+	char title[512];
+	char info[512];
+	TTF_Font* font;
+
 	typedef const char* error_t;
 	
 	// Initialize scope window of specified size. Height must be 256 or less.
