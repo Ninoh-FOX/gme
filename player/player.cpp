@@ -275,9 +275,9 @@ int main( int argc, char** argv )
 						// Decrease volume by 3
 						buf2[1] += 3;
 						
-						// Clamp the volume to be within [-60, 0]
-						if (buf2[1] > 0) 
-							buf2[1] = 0;
+						// Clamp the volume to be within [-60, 9]
+						if (buf2[1] > 9) 
+							buf2[1] = 9;
 						else if (buf2[1] < -60) 
 							buf2[1] = -60;
 						
@@ -301,9 +301,9 @@ int main( int argc, char** argv )
 						// Upgrade volume by 3
 						buf2[1] -= 3;
 						
-						// Clamp the volume to be within [-60, 0]
-						if (buf2[1] > 0) 
-							buf2[1] = 0;
+						// Clamp the volume to be within [-60, 9]
+						if (buf2[1] > 9) 
+							buf2[1] = 9;
 						else if (buf2[1] < -60) 
 							buf2[1] = -60;
 						
