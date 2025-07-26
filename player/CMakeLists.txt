@@ -1,25 +1,54 @@
-find_package(SDL QUIET)
+cmake_minimum_required(VERSION 3.10)
+project(GameMusicPlayer CXX)
 
-set(player_SRCS Audio_Scope.cpp
-                Audio_Scope.h
-		averiafont.h
-		cJSON.cpp
-                cJSON.h
-                Music_Player.cpp
-                Music_Player.h
-                player.cpp)
+option(GME_UNRAR "Enable RAR file format (optional, requires UnRAR library)" ON)
 
-if(SDL_FOUND)
-    message(" ** SDL library located, player demo is available to be built in the /player directory")
+find_package(SDL2 REQUIRED)
+find_package(SDL2_ttf REQUIRED)
 
-    include_directories(${SDL_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}
-        "${CMAKE_HOME_DIRECTORY}" "${CMAKE_HOME_DIRECTORY}/gme"
-        "${CMAKE_BINARY_DIR}/gme")
+if(GME_UNRAR)
+  find_package(UNRAR QUIET)
+endif()
 
-    add_executable(gme_player ${player_SRCS})
-    target_link_libraries(gme_player ${SDL_LIBRARY} gme z SDL_ttf mi_sys mi_gfx mi_ao mi_common)
+set(player_SRCS
+    Audio_Scope.cpp
+    Music_Player.cpp
+    Archive_Reader.cpp
+    player.cpp
+)
 
-    # Is not to be installed though
+add_executable(gme_player ${player_SRCS})
+
+target_include_directories(gme_player PRIVATE
+    ${PROJECT_SOURCE_DIR}/gme
+)
+
+set_property(TARGET gme_player PROPERTY CXX_STANDARD 11)
+set_property(TARGET gme_player PROPERTY CXX_STANDARD_REQUIRED ON)
+
+target_link_libraries(gme_player PRIVATE
+    SDL2::SDL2
+    SDL2_ttf::SDL2_ttf
+    gme::gme
+)
+
+if(GME_UNRAR)
+  if(UNRAR_FOUND)
+    message(STATUS "UnRAR library located, enabling RAR format support")
+    target_compile_definitions(gme_player PRIVATE RARDLL)
+    if(RAR_HDR_UNRAR_H)
+      target_compile_definitions(gme_player PRIVATE RAR_HDR_UNRAR_H)
+    elseif(RAR_HDR_DLL_HPP)
+      target_compile_definitions(gme_player PRIVATE RAR_HDR_DLL_HPP)
+    endif()
+    target_include_directories(gme_player PRIVATE ${UNRAR_INCLUDE_DIRS})
+    target_link_libraries(gme_player PRIVATE ${UNRAR_LIBRARIES})
+    if(NOT WIN32)
+      target_compile_options(gme_player PRIVATE -pthread)
+    endif()
+  else()
+    message(STATUS "UnRAR library not found, RAR support disabled")
+  endif()
 else()
-    message("SDL library not found, disabling player demo build")
+  message(STATUS "RAR file format support excluded by configuration")
 endif()

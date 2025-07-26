@@ -1,10 +1,11 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 
 #include "Audio_Scope.h"
-
+#include "SDL.h"
+#include <cassert>
 #include <assert.h>
 #include <stdlib.h>
-#include "averiafont.h"
+#include <sstream>
 
 /* Copyright (C) 2005-2006 by Shay Green. Permission is hereby granted, free of
 charge, to any person obtaining a copy of this software module and associated
@@ -21,205 +22,132 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
 
-void draw_text(SDL_Surface* dst, TTF_Font* f, char* text, Sint16 x, Sint16 y, Uint8 fR, Uint8 fG, Uint8 fB, Uint8 fA)
+/* Copyright (c) 2019 by Michael Pyne, under the same terms as above. */
+
+// Returns largest power of 2 that is <= the given value.
+// From Henry Warren's book "Hacker's Delight"
+static unsigned largest_power_of_2_within(unsigned x)
 {
-  if(dst && text && f)
-  {
-    SDL_Color foregroundColor={fR, fG, fB, fA};
-    SDL_Surface *textSurface=TTF_RenderText_Blended(f, text, foregroundColor);
-    if(textSurface)
-    {
-      SDL_Rect textLocation={x, y, 0, 0};
-      SDL_BlitSurface(textSurface, NULL, dst, &textLocation);
-      SDL_FreeSurface(textSurface);
-    }
-  }
+    static_assert(sizeof(x) <= 4, "No funciona con entero de 64 bits");
+    x = x | (x >> 1);
+    x = x | (x >> 2);
+    x = x | (x >> 4);
+    x = x | (x >> 8);
+    x = x | (x >> 16);
+    return x - (x >> 1);
 }
 
-int const step_bits = 8;
-int const step_unit = 1 << step_bits;
-int const erase_color = 1;
-int const draw_color = 2;
+// =============
+// Error helpers
+// =============
+
+// If the given SDL return code is an error and if so returns a string
+// with an explanation based on the provided explanation and SDL library
+std::string check_sdl( int ret_code, const char *explanation )
+{
+	static std::string empty;
+	if ( ret_code >= 0 )
+		return empty;
+
+	std::stringstream outstream;
+	outstream << explanation << " " << SDL_GetError();
+	return outstream.str();
+}
+
+// Overload of above
+std::string check_sdl( const void *ptr, const char *explanation )
+{
+	return check_sdl( ptr ? 0 : -1, explanation );
+}
+
+#define RETURN_SDL_ERR(res,msg) do {            \
+	auto check_res = check_sdl( (res), (msg) ); \
+	if( !check_res.empty() ) {                  \
+		return check_res;                       \
+	}                                           \
+} while (0)
+
+// ===========
+// Audio_Scope
+// ===========
 
 Audio_Scope::Audio_Scope()
-{
-	surface = 0;
-	buf = 0;
-}
+    : window(nullptr), window_renderer(nullptr), scope_lines(nullptr), buf_size(0), scope_height(0), sample_shift(1), v_offset(0)
+{}
 
 Audio_Scope::~Audio_Scope()
 {
-	free( buf );
-	
-	if ( surface )
-		SDL_FreeSurface( surface );
+	free( scope_lines );
+
+	if ( window_renderer )
+		SDL_DestroyRenderer( window_renderer );
+	if ( window )
+		SDL_DestroyWindow( window );
 }
 
-const char* Audio_Scope::init( int width, int height )
+std::string Audio_Scope::init(int width, int height)
 {
-	assert( height <= 256 );
-	assert( !buf ); // can only call init() once
-	
-	buf = (byte*) calloc( width * sizeof *buf, 1 );
-	if ( !buf )
-		return "Out of memory";
-	
-	low_y = 0;
-	high_y = height;
-	buf_size = width;
-	
-	for ( sample_shift = 6; sample_shift < 14; )
-		if ( ((0x7FFFL * 2) >> sample_shift++) < height )
-			break;
-	
-	v_offset = height / 2 - (0x10000 >> sample_shift);
-	
-	screen = SDL_SetVideoMode( width, height, 0, 0 );
-	if ( !screen )
-		return "Couldn't set video mode";
-	
-	surface = SDL_CreateRGBSurface( SDL_SWSURFACE, width, height, 8, 0, 0, 0, 0 );
-	if ( !screen )
-		return "Couldn't create surface";
-	
-	static SDL_Color palette [2] = { {0, 0, 0, 0}, {255, 40, 40, 0} };
-	SDL_SetColors( surface, palette, 1, 2 );
+    assert(height <= 16384);
+    assert(!scope_lines); // sólo llamar una vez
 
-  TTF_Init();
-  font=TTF_OpenFontRW(SDL_RWFromMem(averiafont_ttf,averiafont_ttf_len),1, 14);
-  strcpy(info, "");
+    scope_height = height;
+    scope_lines = reinterpret_cast<SDL_Point*>(calloc(width, sizeof(SDL_Point)));
+    if (!scope_lines)
+        return "Fallo memoria para scope_lines";
 
-	return 0; // success
+    buf_size = width;
+
+    for (sample_shift = 1; sample_shift < 14;)
+    {
+        if (((0x7FFFL * 2) >> sample_shift++) < height)
+            break;
+    }
+
+    v_offset = (height - largest_power_of_2_within(height)) / 2;
+
+    window = SDL_CreateWindow("libgme sample player audio scope",
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        width, height,
+        0);
+
+    if (!window)
+        return "No se pudo crear ventana SDL Audio_Scope";
+
+    window_renderer = SDL_CreateRenderer(window, -1, 0);
+    if (!window_renderer)
+        return "No se pudo crear renderizador para la ventana";
+
+    return ""; // éxito
 }
 
-const char* Audio_Scope::draw( const short* in, long count, double step )
+const char* Audio_Scope::draw(const short* in, long count, int step)
 {
-	int low = low_y;
-	int high = high_y;
-	
-	if ( count >= buf_size )
-	{
-		count = buf_size;
-		low_y = 0x7FFF;
-		high_y = 0;
-	}
-	
-	if ( SDL_LockSurface( surface ) < 0 )
-		return "Couldn't lock surface";
-	render( in, count, (long) (step * step_unit) );
-	SDL_UnlockSurface( surface );
-	
-	if ( low > low_y )
-		low = low_y;
-	
-	if ( high < high_y )
-		high = high_y;
-	
-	SDL_Rect r;
-	r.x = 0;
-	r.w = buf_size;
-	r.y = low + v_offset;
-	r.h = high - low + 1;
-	
-	if ( SDL_BlitSurface( surface, &r, screen, &r ) < 0 )
-		return "Blit to screen failed";
+    if (count >= buf_size)
+        count = buf_size;
 
-  r={0,12,640,20};
-  SDL_FillRect(screen, &r, 0);
-  draw_text(screen, font, title, 12, 12, 255, 40, 40, 0);
-  r={0,220,640,20};
-  SDL_FillRect(screen, &r, 0);
-  draw_text(screen, font, info, 12, 220, 255, 40, 40, 0);
+    SDL_SetRenderDrawColor(window_renderer, 0, 0, 0, 255);
+    SDL_RenderClear(window_renderer);
+    render(in, count, step);
+    SDL_SetRenderDrawColor(window_renderer, 0, 255, 0, 255);
+    SDL_RenderDrawLines(window_renderer, scope_lines, (int)count);
+    SDL_RenderPresent(window_renderer);
 
-	if ( SDL_Flip( screen ) < 0 )
-		return "Couldn't flip screen";
-	
-	return 0; // success
+    return 0;
 }
 
-void Audio_Scope::render( short const* in, long count, long step )
+void Audio_Scope::render(short const* in, long count, int step)
 {
-	byte* old_pos = buf;
-	long surface_pitch = surface->pitch;
-	byte* out = (byte*) surface->pixels + v_offset * surface_pitch;
-	int old_erase = *old_pos;
-	int old_draw = 0;
-	long in_pos = 0;
-	
-	int low_y  = this->low_y;
-	int high_y = this->high_y;
-	int half_step = (step + step_unit / 2) >> (step_bits + 1);
-	
-	while ( count-- )
-	{
-		// Line drawing/erasing starts at previous sample and ends one short of
-		// current sample, except when previous and current are the same.
-		
-		// Extra read on the last iteration of line loops will always be at the
-		// height of the next sample, and thus within the gworld bounds.
-		
-		// Erase old line
-		{
-			int delta = *old_pos - old_erase;
-			int offset = old_erase * surface_pitch;
-			old_erase += delta;
-			
-			int next_line = surface_pitch;
-			if ( delta < 0 )
-			{
-				delta = -delta;
-				next_line = -surface_pitch;
-			}
-			
-			do
-			{
-				out [offset] = erase_color;
-				offset += next_line;
-			}
-			while ( delta-- > 1 );
-		}
-		
-		// Draw new line and put in old_buf
-		{
-			
-			int in_whole = in_pos >> step_bits;
-			int sample = (0x7FFF * 2 - in [in_whole] - in [in_whole + half_step]) >> sample_shift;
-			if ( !in_pos )
-				old_draw = sample;
-			in_pos += step;
-			
-			int delta = sample - old_draw;
-			int offset = old_draw * surface_pitch;
-			old_draw += delta;
-			
-			int next_line = surface_pitch;
-			if ( delta < 0 )
-			{
-				delta = -delta;
-				next_line = -surface_pitch;
-			}
-			
-			*old_pos++ = sample;
-			
-			// min/max updating can be interleved anywhere
-			
-			if ( low_y > sample )
-				low_y = sample;
-			
-			do
-			{
-				out [offset] = draw_color;
-				offset += next_line;
-			}
-			while ( delta-- > 1 );
-			
-			if ( high_y < sample )
-				high_y = sample;
-		}
-		
-		out++;
-	}
-	
-	this->low_y = low_y;
-	this->high_y = high_y;
+    for (long i = 0; i < count; i++)
+    {
+        int sample = (0x7FFF * 2 - in[i * step] - in[i * step + 1]) >> sample_shift;
+        scope_lines[i].x = (int)i;
+        scope_lines[i].y = sample + v_offset;
+    }
+}
+
+void Audio_Scope::set_caption(const char* caption)
+{
+    if (window)
+        SDL_SetWindowTitle(window, caption);
 }
