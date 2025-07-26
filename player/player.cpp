@@ -1,3 +1,22 @@
+/* How to play game music files with Music_Player (requires SDL2 and UNRAR library)
+
+Run program with path to a game music file.
+
+Left/Right  Change track
+Up/Down     tempo
+Button A    Play file
+Button B    Back to files selector
+Button Y    Toggle track looping (infinite playback)
+Button X    Pause/unpauseToggle echo processing
+Button L1   Enable/disable accurate emulation
+Button R1   Reset tempo and turn channels back on
+
+Select      EXIT
+start       Pause/unpause */
+
+// Make ISO C99 symbols available for snprintf, define must be set before any
+// system header includes
+
 #define _ISOC99_SOURCE 1
 
 #include "Music_Player.h"
@@ -540,12 +559,28 @@ int main(int /*argc*/, char** /*argv*/)
                                 if (track < player->track_count())
                                     start_track(++track, selected_file_path.c_str());
                                 break;
-                            case SDL_CONTROLLER_BUTTON_DPAD_UP:
-                                player->seek_forward();
+                            case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+                                accurate = !accurate;
+					            player->enable_accuracy( accurate );
+                                break;
+                            case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                                tempo = 1.0;
+                                muting_mask = 0;
+					            player->set_tempo( tempo );
+                                player->mute_voices( muting_mask );
                                 break;
                             case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-                                player->seek_backward();
-                                break;
+					            tempo -= 0.1;
+					            if ( tempo < 0.1 )
+						           tempo = 0.1;
+					            player->set_tempo( tempo );
+					        break;
+				            case SDL_CONTROLLER_BUTTON_DPAD_UP:
+					            tempo += 0.1;
+					            if ( tempo > 2.0 )
+						           tempo = 2.0;
+					            player->set_tempo( tempo );
+					       break;
                         }
                         break;
                     }
