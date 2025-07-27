@@ -1,11 +1,13 @@
 // Game_Music_Emu https://bitbucket.org/mpyne/game-music-emu/
 
 #include "Audio_Scope.h"
+
 #include "SDL.h"
+
+#include <cstdlib>
 #include <cassert>
-#include <assert.h>
-#include <stdlib.h>
 #include <sstream>
+#include <string>
 
 /* Copyright (C) 2005-2006 by Shay Green. Permission is hereby granted, free of
 charge, to any person obtaining a copy of this software module and associated
@@ -28,7 +30,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
 // From Henry Warren's book "Hacker's Delight"
 static unsigned largest_power_of_2_within(unsigned x)
 {
-    static_assert(sizeof(x) <= 4, "No funciona con entero de 64 bits");
+    static_assert(sizeof(x) <= 4, "Does not work with 64-bit int");
     x = x | (x >> 1);
     x = x | (x >> 2);
     x = x | (x >> 4);
@@ -40,61 +42,55 @@ static unsigned largest_power_of_2_within(unsigned x)
 // =============
 // Error helpers
 // =============
-
-// If the given SDL return code is an error and if so returns a string
-// with an explanation based on the provided explanation and SDL library
-std::string check_sdl( int ret_code, const char *explanation )
+// If the given SDL return code is an error, returns a string with explanation.
+std::string check_sdl(int ret_code, const char *explanation)
 {
-	static std::string empty;
-	if ( ret_code >= 0 )
-		return empty;
-
-	std::stringstream outstream;
-	outstream << explanation << " " << SDL_GetError();
-	return outstream.str();
+    static std::string empty;
+    if (ret_code >= 0)
+        return empty;
+    std::stringstream outstream;
+    outstream << explanation << " " << SDL_GetError();
+    return outstream.str();
 }
 
-// Overload of above
-std::string check_sdl( const void *ptr, const char *explanation )
+// Overload for pointer
+std::string check_sdl(const void *ptr, const char *explanation)
 {
-	return check_sdl( ptr ? 0 : -1, explanation );
+    return check_sdl(ptr ? 0 : -1, explanation);
 }
 
-#define RETURN_SDL_ERR(res,msg) do {            \
-	auto check_res = check_sdl( (res), (msg) ); \
-	if( !check_res.empty() ) {                  \
-		return check_res;                       \
-	}                                           \
+#define RETURN_SDL_ERR(res,msg) do { \
+    auto check_res = check_sdl((res), (msg)); \
+    if (!check_res.empty()) { \
+        return check_res; \
+    } \
 } while (0)
 
 // ===========
 // Audio_Scope
 // ===========
-
 Audio_Scope::Audio_Scope()
     : window(nullptr), window_renderer(nullptr), scope_lines(nullptr), buf_size(0), scope_height(0), sample_shift(1), v_offset(0)
 {}
 
 Audio_Scope::~Audio_Scope()
 {
-	free( scope_lines );
-
-	if ( window_renderer )
-		SDL_DestroyRenderer( window_renderer );
-	if ( window )
-		SDL_DestroyWindow( window );
+    free(scope_lines);
+    if (window_renderer)
+        SDL_DestroyRenderer(window_renderer);
+    if (window)
+        SDL_DestroyWindow(window);
 }
 
 std::string Audio_Scope::init(int width, int height)
 {
     assert(height <= 16384);
-    assert(!scope_lines); // sólo llamar una vez
+    assert(!scope_lines); // only call once
 
     scope_height = height;
     scope_lines = reinterpret_cast<SDL_Point*>(calloc(width, sizeof(SDL_Point)));
     if (!scope_lines)
-        return "Fallo memoria para scope_lines";
-
+        return "Failed to allocate memory for scope_lines";
     buf_size = width;
 
     for (sample_shift = 1; sample_shift < 14;)
@@ -106,19 +102,16 @@ std::string Audio_Scope::init(int width, int height)
     v_offset = (height - largest_power_of_2_within(height)) / 2;
 
     window = SDL_CreateWindow("libgme sample player audio scope",
-        SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED,
-        width, height,
-        0);
-
+                              SDL_WINDOWPOS_UNDEFINED,
+                              SDL_WINDOWPOS_UNDEFINED,
+                              width, height,
+                              SDL_WINDOW_BORDERLESS);
     if (!window)
-        return "No se pudo crear ventana SDL Audio_Scope";
-
+        return "Failed to create SDL Audio_Scope window";
     window_renderer = SDL_CreateRenderer(window, -1, 0);
     if (!window_renderer)
-        return "No se pudo crear renderizador para la ventana";
-
-    return ""; // éxito
+        return "Failed to create renderer for the window";
+    return ""; // success
 }
 
 const char* Audio_Scope::draw(const short* in, long count, int step)
@@ -132,7 +125,6 @@ const char* Audio_Scope::draw(const short* in, long count, int step)
     SDL_SetRenderDrawColor(window_renderer, 0, 255, 0, 255);
     SDL_RenderDrawLines(window_renderer, scope_lines, (int)count);
     SDL_RenderPresent(window_renderer);
-
     return 0;
 }
 
