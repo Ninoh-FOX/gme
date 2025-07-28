@@ -107,6 +107,7 @@ static void start_track(int trk, const char* path);
 // Hardware functions to turn display on/off
 void hw_display_off(void)
 {
+	system("wlr-randr --output DSI-1 --off");
     FILE *f;
     if ((f = fopen("/sys/class/backlight/backlight/bl_power", "w"))) {
         fprintf(f, "1\n");
@@ -116,6 +117,7 @@ void hw_display_off(void)
 
 void hw_display_on(void)
 {
+	system("wlr-randr --output DSI-1 --on");
     FILE *f;
     if ((f = fopen("/sys/class/backlight/backlight/bl_power", "w"))) {
         fprintf(f, "0\n");
