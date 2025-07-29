@@ -554,13 +554,65 @@ int main(int /*argc*/, char** /*argv*/)
                                 running = false;
                                 break;
                             case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-                                if (!paused && track > 1) track--;
-                                start_track(track, selected_file_path.c_str());
+                                if (!paused) {
+                                    if (player->track_count() == 1) {
+                                        int curr = -1;
+                                        for (size_t i = 0; i < entries.size(); ++i) {
+                                            std::string path = current_path + (current_path == "/" ? "" : "/") + entries[i].name;
+                                            if (path == selected_file_path) {
+                                                curr = (int)i;
+                                                break;
+                                            }
+                                        }
+                                        if (curr != -1) {
+                                            int next = curr;
+                                            do {
+                                                next--;
+                                                if (next < 0)
+                                                    next = entries.size() - 1;    // wrap-around
+                                            } while (entries[next].is_dir || !is_valid_music(entries[next].name.c_str()) || next == curr);
+                                            selected_file_path = current_path + (current_path == "/" ? "" : "/") + entries[next].name;
+                                            handle_error(player->load_file(selected_file_path.c_str(), false));
+                                            start_track(1, selected_file_path.c_str());
+                                        }
+                                    } else {
+                                        if (track > 1)
+                                            track--;
+                                        start_track(track, selected_file_path.c_str());
+                                    }
+                                }
                                 break;
+
                             case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-                                if (track < player->track_count())
-                                    start_track(++track, selected_file_path.c_str());
+                                if (!paused) {
+                                    if (player->track_count() == 1) {
+                                        int curr = -1;
+                                        for (size_t i = 0; i < entries.size(); ++i) {
+                                            std::string path = current_path + (current_path == "/" ? "" : "/") + entries[i].name;
+                                            if (path == selected_file_path) {
+                                                curr = (int)i;
+                                                break;
+                                            }
+                                        }
+                                        if (curr != -1) {
+                                            int next = curr;
+                                            do {
+                                                next++;
+                                                if (next >= (int)entries.size())
+                                                    next = 0;    // wrap-around
+                                            } while (entries[next].is_dir || !is_valid_music(entries[next].name.c_str()) || next == curr);
+                                            selected_file_path = current_path + (current_path == "/" ? "" : "/") + entries[next].name;
+                                            handle_error(player->load_file(selected_file_path.c_str(), false));
+                                            start_track(1, selected_file_path.c_str());
+                                        }
+                                    } else {
+                                        if (track < player->track_count())
+                                            track++;
+                                        start_track(track, selected_file_path.c_str());
+                                    }
+                                }
                                 break;
+
                             case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
                                 accurate = !accurate;
                                 player->enable_accuracy(accurate);
@@ -601,10 +653,34 @@ int main(int /*argc*/, char** /*argv*/)
                         start_track(track, selected_file_path.c_str());
                     }
                     else if (loop_mode == LOOP_ALL) {
-                        ++track;
-                        if (track > player->track_count())
-                            track = 1;
-                        start_track(track, selected_file_path.c_str());
+                        if (player->track_count() == 1) {
+                            int curr = -1;
+                            for (size_t i = 0; i < entries.size(); ++i) {
+                                std::string path = current_path + (current_path == "/" ? "" : "/") + entries[i].name;
+                                if (path == selected_file_path) {
+                                    curr = (int)i;
+                                    break;
+                                }
+                            }
+                            if (curr != -1) {
+                                int next = curr;
+                                do {
+                                    next++;
+                                    if (next >= (int)entries.size())
+                                        next = 0; // wrap-around
+                                } while (entries[next].is_dir || !is_valid_music(entries[next].name.c_str()) || next == curr);
+                    
+                                selected_file_path = current_path + (current_path == "/" ? "" : "/") + entries[next].name;
+                                handle_error(player->load_file(selected_file_path.c_str(), false));
+                                track = 1;
+                                start_track(track, selected_file_path.c_str());
+                            }
+                        } else {
+                            ++track;
+                            if (track > player->track_count())
+                                track = 1;
+                            start_track(track, selected_file_path.c_str());
+                        }
                     }
                 }
             }
