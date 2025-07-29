@@ -475,16 +475,16 @@ int main(int /*argc*/, char** /*argv*/)
                     // Draw bottom right text: loop mode, tempo, pause status, controls info
                     const char* loop_str = "";
                     switch (loop_mode) {
-                        case LOOP_OFF: loop_str = "Loop: OFF"; break;
-                        case LOOP_ONE: loop_str = "Loop: ONE"; break;
-                        case LOOP_ALL: loop_str = "Loop: ALL"; break;
+                        case LOOP_OFF: loop_str = "Loop: [OFF]"; break;
+                        case LOOP_ONE: loop_str = "Loop: [ONE]"; break;
+                        case LOOP_ALL: loop_str = "Loop: [ALL]"; break;
                     }
                     int info_x = 10;
                     int info_y = scope_height - margin_bottom + 5;
                     char modeinfo[256];
-                    snprintf(modeinfo, sizeof(modeinfo), "%s Tempo: %.1f Echo: %s %s", loop_str, tempo, echo_disabled ? "OFF" : "ON", paused ? "[PAUSED]" : "");
+                    snprintf(modeinfo, sizeof(modeinfo), "%s Tempo: [%.1f] Echo: [%s] %s", loop_str, tempo, echo_disabled ? "OFF" : "ON", paused ? "[PAUSED]" : "");
                     render_text(modeinfo, info_x, info_y, green);
-                    render_text("B:Back Y:Loop ST:Pause X:Echo L:Accu R:Res SL:Exit", info_x, info_y + 30, green);
+                    render_text("B:Back Y:Loop ST:Pause X:Echo L:Accu R:Res SE:Exit", info_x, info_y + 30, green);
 
                     // Present everything
                     SDL_RenderPresent(renderer);
