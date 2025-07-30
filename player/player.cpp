@@ -1,4 +1,5 @@
 /*
+
 How to play game music files with Music_Player (requires SDL2 and UNRAR library)
 
 Run the program with the path to a game music file.
@@ -69,6 +70,8 @@ static std::string current_path = "/roms/music"; // initial root directory
 static int selected_index = 0;
 static bool file_selected = false;
 static std::string selected_file_path;
+static std::string saved_path = current_path;
+static int saved_index = 0;
 
 // Playback state variables
 static int track = 1;
@@ -99,7 +102,7 @@ static void handle_error(const char*);
 static void render_text(const char* text, int x, int y, SDL_Color color);
 static bool is_directory(const std::string& path);
 static bool is_valid_music(const std::string& fname);
-static void list_directory(const std::string& path);
+static void list_directory(const std::string& path, bool reset_selection = true);
 static void draw_file_browser();
 static void on_enter_pressed();
 static void start_track(int trk, const char* path);
@@ -159,7 +162,8 @@ static bool is_valid_music(const std::string& fname) {
 }
 
 // List content of directory into entries vector
-static void list_directory(const std::string& path) {
+// CORREGIDO: reset_selection controla si resetear selected_index
+static void list_directory(const std::string& path, bool reset_selection) {
     entries.clear();
     DIR* dir = opendir(path.c_str());
     if (!dir) return;
@@ -179,68 +183,61 @@ static void list_directory(const std::string& path) {
             if (a.is_dir != b.is_dir) return a.is_dir > b.is_dir;
             return a.name < b.name;
         });
-    selected_index = 0;
+    
+    // CORREGIDO: Solo resetear si se especifica
+    if (reset_selection) {
+        selected_index = 0;
+    }
+    
+    // Validar que selected_index esté en rango
+    if (selected_index >= (int)entries.size()) {
+        selected_index = (int)entries.size() - 1;
+    }
+    if (selected_index < 0) {
+        selected_index = 0;
+    }
 }
 
 // Draw the file browser screen
-static void draw_file_browser()
-{
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+static void draw_file_browser() {
+    SDL_SetRenderDrawColor(renderer, 0,0,0,255);
     SDL_RenderClear(renderer);
-
-    SDL_Color white = {255, 255, 255, 255};
-    SDL_Color highlight = {255, 255, 0, 255};
-    SDL_Color dir_color = {0, 255, 255, 255};
+    SDL_Color white = {255,255,255,255};
+    SDL_Color highlight = {255,255,0,255};
+    SDL_Color dir_color = {0,255,255,255};
 
     int y = 5;
     int line_height = TTF_FontLineSkip(font);
-    int max_lines = (scope_height - 40) / line_height;
+    int max_lines = (scope_height - 40)/line_height;
 
     char buf[512];
     snprintf(buf, sizeof(buf), "Current path: %s", current_path.c_str());
     render_text(buf, 10, y, white);
     y += line_height + 5;
 
-    int total_entries = entries.size() + (current_path != "/" ? 1 : 0);
-    int scroll_start = 0;
-    int scroll_end = total_entries;
+    int total_entries = (int)entries.size();
 
+    int scroll_start = 0;
     if (total_entries > max_lines) {
-        if (selected_index < max_lines / 2)
+        if (selected_index < max_lines/2)
             scroll_start = 0;
-        else if (selected_index > total_entries - max_lines / 2)
+        else if (selected_index > total_entries - max_lines/2)
             scroll_start = total_entries - max_lines;
         else
-            scroll_start = selected_index - max_lines / 2;
+            scroll_start = selected_index - max_lines/2;
+
         if (scroll_start < 0) scroll_start = 0;
-        scroll_end = scroll_start + max_lines;
-        if (scroll_end > total_entries) scroll_end = total_entries;
     }
+
+    int scroll_end = scroll_start + max_lines;
+    if (scroll_end > total_entries) scroll_end = total_entries;
 
     int draw_y = y;
     for (int i = scroll_start; i < scroll_end; ++i) {
-        SDL_Color color;
-        std::string textline;
-        if (current_path != "/" && i == 0) {
-            color = (selected_index == i) ? highlight : white;
-            textline = "UP DIRECTORY";
-        } else {
-            int real_idx = i - (current_path != "/" ? 1 : 0);
-            const Entry& e = entries[real_idx];
-            color = (selected_index == i) ? highlight : (e.is_dir ? dir_color : white);
-            textline = e.is_dir ? "[DIR] " + e.name : e.name;
-        }
+        SDL_Color color = (selected_index == i) ? highlight : (entries[i].is_dir ? dir_color : white);
+        std::string textline = entries[i].is_dir ? "[DIR] " + entries[i].name : entries[i].name;
         render_text(textline.c_str(), 10, draw_y, color);
         draw_y += line_height;
-    }
-
-    // Scrollbar
-    if (total_entries > max_lines) {
-        int bar_height = std::max(10, max_lines * max_lines / total_entries);
-        int bar_y = y + (selected_index * (scope_height - y - 10) / total_entries);
-        SDL_Rect scrollbar = {scope_width - 8, bar_y, 6, bar_height};
-        SDL_SetRenderDrawColor(renderer, 128, 128, 128, 192);
-        SDL_RenderFillRect(renderer, &scrollbar);
     }
 
     SDL_RenderPresent(renderer);
@@ -248,28 +245,24 @@ static void draw_file_browser()
 
 // Handle enter key (or button A) pressed on the browser
 static void on_enter_pressed() {
-    if (current_path != "/" && selected_index == 0) {
-        size_t pos = current_path.find_last_of('/');
-        if (pos == std::string::npos || current_path == "/")
-            current_path = "/";
-        else {
-            current_path = current_path.substr(0, pos);
-            if (current_path.empty())
-                current_path = "/";
-        }
-        list_directory(current_path);
+    if (selected_index < 0 || selected_index >= (int)entries.size()) return;
+
+    const Entry& e = entries[selected_index];
+    if (e.is_dir) {
+        current_path += (current_path == "/" ? "" : "/") + e.name;
+        list_directory(current_path, true); // Reset selection cuando navegas a nueva carpeta
     } else {
-        int real_idx = selected_index - (current_path != "/" ? 1 : 0);
-        if (real_idx < 0 || real_idx >= (int)entries.size())
-            return;
-        const Entry& e = entries[real_idx];
-        if (e.is_dir) {
-            current_path += (current_path == "/" ? "" : "/") + e.name;
-            list_directory(current_path);
-        } else {
-            selected_file_path = current_path + (current_path == "/" ? "" : "/") + e.name;
-            file_selected = true;
-        }
+        saved_path = current_path;
+        saved_index = selected_index;
+
+        selected_file_path = current_path + (current_path == "/" ? "" : "/") + e.name;
+        file_selected = true;
+        run_mode = MODE_PLAYBACK;
+
+        handle_error(player->load_file(selected_file_path.c_str(), false));
+        track = 1;
+        start_track(track, selected_file_path.c_str());
+        paused = false;
     }
 }
 
@@ -344,14 +337,15 @@ int main(int /*argc*/, char** /*argv*/)
     if (SDL_NumJoysticks() > 0)
         gamepad = SDL_GameControllerOpen(0);
 
+    // Cargar directorio inicial
+    list_directory(current_path, true);
+
     while (running) {
         SDL_Delay(1000 / 100);
 
         if (run_mode == MODE_SELECTION) {
             file_selected = false;
-            current_path = "/roms/music";
-            selected_index = 0;
-            list_directory(current_path);
+            // CORREGIDO: NO llamar list_directory aquí para no resetear
 
             while (running && run_mode == MODE_SELECTION) {
                 draw_file_browser();
@@ -374,11 +368,11 @@ int main(int /*argc*/, char** /*argv*/)
                         case SDL_CONTROLLER_BUTTON_DPAD_UP:
                             selected_index--;
                             if (selected_index < 0)
-                                selected_index = (current_path != "/" ? 1 : 0) + (int)entries.size() - 1;
+                                selected_index = (int)entries.size() - 1;
                             break;
                         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
                             selected_index++;
-                            if (selected_index > (current_path != "/" ? 1 : 0) + (int)entries.size() - 1)
+                            if (selected_index >= (int)entries.size())
                                 selected_index = 0;
                             break;
                         case SDL_CONTROLLER_BUTTON_A:
@@ -388,28 +382,31 @@ int main(int /*argc*/, char** /*argv*/)
                             }
                             break;
                         case SDL_CONTROLLER_BUTTON_B:
-                            // Already in selection, just reset
-                            selected_index = 0;
-                            current_path = "/roms/music";
-                            list_directory(current_path);
-                            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                            SDL_RenderClear(renderer);
-                            draw_file_browser();
+                            if (run_mode == MODE_SELECTION) {
+                                if (current_path != "/roms/music") {
+                                    size_t pos = current_path.find_last_of('/');
+                                    if (pos == std::string::npos || current_path == "/roms/music") {
+                                        current_path = "/roms/music";
+                                    } else {
+                                        current_path = current_path.substr(0, pos);
+                                        if (current_path.empty())
+                                            current_path = "/roms/music";
+                                    }
+                                    list_directory(current_path, true); // Reset selection al subir directorio
+                                }
+                            }
                             break;
                         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: // L - page up
                             if (run_mode == MODE_SELECTION) {
                                 selected_index -= 10;
-                                int max_idx = (current_path != "/" ? 1 : 0) + (int)entries.size() - 1;
-                                while (selected_index < 0)
-                                    selected_index += max_idx + 1;
-                                selected_index = selected_index % (max_idx + 1);
+                                if (selected_index < 0) selected_index = 0;
                             }
                             break;
                         case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: // R - page down
                             if (run_mode == MODE_SELECTION) {
                                 selected_index += 10;
-                                int max_idx = (current_path != "/" ? 1 : 0) + (int)entries.size() - 1;
-                                selected_index = selected_index % (max_idx + 1);
+                                if (selected_index >= (int)entries.size()) 
+                                    selected_index = (int)entries.size() - 1;
                             }
                             break;
                         case SDL_CONTROLLER_BUTTON_GUIDE:
@@ -473,17 +470,60 @@ int main(int /*argc*/, char** /*argv*/)
                     render_text(trackinfo, 10, 36, green);
 
                     // Draw bottom right text: loop mode, tempo, pause status, controls info
-                    const char* loop_str = "";
-                    switch (loop_mode) {
-                        case LOOP_OFF: loop_str = "Loop: [OFF]"; break;
-                        case LOOP_ONE: loop_str = "Loop: [ONE]"; break;
-                        case LOOP_ALL: loop_str = "Loop: [ALL]"; break;
-                    }
+                    SDL_Color orange = {255, 165, 0, 255};
+                    
                     int info_x = 10;
                     int info_y = scope_height - margin_bottom + 5;
-                    char modeinfo[256];
-                    snprintf(modeinfo, sizeof(modeinfo), "%s Tempo: [%.1f] Echo: [%s] %s", loop_str, tempo, echo_disabled ? "OFF" : "ON", paused ? "[PAUSED]" : "");
-                    render_text(modeinfo, info_x, info_y, green);
+                    
+                    int x = info_x;
+                    int y = info_y;
+                    int w = 0, h = 0;
+                    
+                    // Texto fijo "Loop: "
+                    render_text("Loop: ", x, y, green);
+                    TTF_SizeText(font, "Loop: ", &w, &h);
+                    x += w;
+                    
+                    const char* loop_val = "";
+                    switch (loop_mode) {
+                        case LOOP_OFF: loop_val = "OFF"; break;
+                        case LOOP_ONE: loop_val = "ONE"; break;
+                        case LOOP_ALL: loop_val = "ALL"; break;
+                    }
+                    render_text(loop_val, x, y, orange);
+                    TTF_SizeText(font, loop_val, &w, &h);
+                    x += w;
+                    
+                    render_text(" Tempo: ", x, y, green);
+                    TTF_SizeText(font, " Tempo: ", &w, &h);
+                    x += w;
+                    
+                    char tempo_str[16];
+                    snprintf(tempo_str, sizeof(tempo_str), "%.1f", tempo);
+                    render_text(tempo_str, x, y, orange);
+                    TTF_SizeText(font, tempo_str, &w, &h);
+                    x += w;
+                    
+                    render_text(" Echo: ", x, y, green);
+                    TTF_SizeText(font, " Echo: ", &w, &h);
+                    x += w;
+                    
+                    const char* echo_str = echo_disabled ? "OFF" : "ON";
+                    render_text(echo_str, x, y, orange);
+                    TTF_SizeText(font, echo_str, &w, &h);
+                    x += w;
+                    
+                    render_text(" ", x, y, green);
+                    TTF_SizeText(font, " ", &w, &h);
+                    x += w;
+                    
+                    if (paused) {
+                        const char* paused_str = "[PAUSED]";
+                        render_text(paused_str, x, y, orange);
+                        TTF_SizeText(font, paused_str, &w, &h);
+                        x += w;
+                    }
+                    
                     render_text("B:Back Y:Loop ST:Pause X:Echo L:Accu R:Res SE:Exit", info_x, info_y + 30, green);
 
                     // Present everything
@@ -512,23 +552,20 @@ int main(int /*argc*/, char** /*argv*/)
                                 screen_off = true;
                                 break;
                             case SDL_CONTROLLER_BUTTON_B:
-                                player->stop();
-                                if (scope) {
-                                    delete scope;
-                                    scope = nullptr;
+                                if (run_mode == MODE_PLAYBACK) {
+                                    player->stop();
+                                    if (scope) {
+                                        delete scope;
+                                        scope = nullptr;
+                                    }
+                                    run_mode = MODE_SELECTION;
+                                    paused = false;
+                                    current_path = saved_path;
+                                    // CORREGIDO: NO resetear selected_index aquí
+                                    list_directory(current_path, false); // false = no resetear selección
+                                    selected_index = saved_index;
+                                    draw_file_browser();
                                 }
-                                // Return to file selector
-                                file_selected = false;
-                                run_mode = MODE_SELECTION;
-                                paused = false;
-                                track = 1;
-                                selected_index = 0;
-                                current_path = "/roms/music";
-                                list_directory(current_path);
-                                loop_mode = LOOP_ALL;
-                                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                                SDL_RenderClear(renderer);
-                                draw_file_browser();
                                 break;
                             case SDL_CONTROLLER_BUTTON_Y:
                                 loop_mode = static_cast<LoopMode>((loop_mode + 1) % 3);
