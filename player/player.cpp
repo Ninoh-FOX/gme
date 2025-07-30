@@ -638,6 +638,77 @@ int main(int /*argc*/, char** /*argv*/)
                         }
                     }
                 }
+                
+                const Sint16 l2 = SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+                const Sint16 r2 = SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+                const Sint16 trigger_threshold = 16000;
+                static bool l2_prev = false, r2_prev = false;
+                
+                if (screen_off) {
+                    if (l2 > trigger_threshold && !l2_prev && !paused) {
+                        if (player->track_count() == 1) {
+                            int curr = -1;
+                            for (size_t i = 0; i < entries.size(); ++i) {
+                                std::string path = current_path + (current_path == "/" ? "" : "/") + entries[i].name;
+                                if (path == selected_file_path) {
+                                    curr = (int)i;
+                                    break;
+                                }
+                            }
+                            if (curr != -1) {
+                                int next = curr;
+                                do {
+                                    next--;
+                                    if (next < 0)
+                                        next = entries.size() - 1;
+                                } while (entries[next].is_dir || !is_valid_music(entries[next].name.c_str()) || next == curr);
+                
+                                selected_file_path = current_path + (current_path == "/" ? "" : "/") + entries[next].name;
+                                handle_error(player->load_file(selected_file_path.c_str(), false));
+                                start_track(1, selected_file_path.c_str());
+                            }
+                        } else {
+                            if (track > 1)
+                                track--;
+                            start_track(track, selected_file_path.c_str());
+                        }
+                        l2_prev = true;
+                    } else if (l2 <= trigger_threshold) {
+                        l2_prev = false;
+                    }
+                
+                    if (r2 > trigger_threshold && !r2_prev && !paused) {
+                        if (player->track_count() == 1) {
+                            int curr = -1;
+                            for (size_t i = 0; i < entries.size(); ++i) {
+                                std::string path = current_path + (current_path == "/" ? "" : "/") + entries[i].name;
+                                if (path == selected_file_path) {
+                                    curr = (int)i;
+                                    break;
+                                }
+                            }
+                            if (curr != -1) {
+                                int next = curr;
+                                do {
+                                    next++;
+                                    if (next >= (int)entries.size())
+                                        next = 0;
+                                } while (entries[next].is_dir || !is_valid_music(entries[next].name.c_str()) || next == curr);
+                
+                                selected_file_path = current_path + (current_path == "/" ? "" : "/") + entries[next].name;
+                                handle_error(player->load_file(selected_file_path.c_str(), false));
+                                start_track(1, selected_file_path.c_str());
+                            }
+                        } else {
+                            if (track < player->track_count())
+                                track++;
+                            start_track(track, selected_file_path.c_str());
+                        }
+                        r2_prev = true;
+                    } else if (r2 <= trigger_threshold) {
+                        r2_prev = false;
+                    }
+                }
 
                 if (!paused && player->track_ended()) {
                     if (loop_mode == LOOP_OFF) {
