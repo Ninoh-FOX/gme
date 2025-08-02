@@ -855,6 +855,7 @@ int main(int /*argc*/, char** /*argv*/)
     if (gamepad) SDL_GameControllerClose(gamepad);
     if (font) TTF_CloseFont(font);
     if (small_font) TTF_CloseFont(small_font);
+    if (big_font) TTF_CloseFont(big_font);
     if (renderer) SDL_DestroyRenderer(renderer);
     if (window) SDL_DestroyWindow(window);
     delete player;
