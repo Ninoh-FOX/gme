@@ -57,6 +57,8 @@ static bool paused = false;
 
 // SDL2 and TTF
 static TTF_Font* font = nullptr;
+static TTF_Font* small_font = nullptr;
+static TTF_Font* big_font = nullptr;
 static SDL_Window* window = nullptr;
 static SDL_Renderer* renderer = nullptr;
 
@@ -132,6 +134,32 @@ void hw_display_on(void)
 static void render_text(const char* text, int x, int y, SDL_Color color)
 {
     SDL_Surface* surf = TTF_RenderText_Blended(font, text, color);
+    if (!surf) return;
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surf);
+    SDL_FreeSurface(surf);
+    if (!texture) return;
+    SDL_Rect rect = { x, y, 0, 0 };
+    SDL_QueryTexture(texture, NULL, NULL, &rect.w, &rect.h);
+    SDL_RenderCopy(renderer, texture, NULL, &rect);
+    SDL_DestroyTexture(texture);
+}
+
+static void render_text_small(const char* text, int x, int y, SDL_Color color)
+{
+    SDL_Surface* surf = TTF_RenderText_Blended(small_font, text, color);
+    if (!surf) return;
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surf);
+    SDL_FreeSurface(surf);
+    if (!texture) return;
+    SDL_Rect rect = { x, y, 0, 0 };
+    SDL_QueryTexture(texture, NULL, NULL, &rect.w, &rect.h);
+    SDL_RenderCopy(renderer, texture, NULL, &rect);
+    SDL_DestroyTexture(texture);
+}
+
+static void render_text_big(const char* text, int x, int y, SDL_Color color)
+{
+    SDL_Surface* surf = TTF_RenderText_Blended(big_font, text, color);
     if (!surf) return;
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surf);
     SDL_FreeSurface(surf);
@@ -290,6 +318,7 @@ static void start_track(int trk, const char* path)
              seconds / 60, seconds % 60);
 
     SDL_SetWindowTitle(window, title);
+    player->set_stereo_depth(stereo_depth);
 }
 
 // Clear the top and bottom text areas by filling with black
@@ -323,6 +352,18 @@ int main(int /*argc*/, char** /*argv*/)
     if (!font) {
         font = TTF_OpenFont("DejaVuSans.ttf", 24);
         if (!font) handle_error("Failed to load TTF font");
+    }
+    
+    big_font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28);
+    if (!big_font) {
+        big_font = TTF_OpenFont("DejaVuSans.ttf", 28);
+        if (!big_font) handle_error("Failed to load TTF font");
+    }
+    
+    small_font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22);
+    if (!small_font) {
+        small_font = TTF_OpenFont("DejaVuSans.ttf", 22);
+        if (!small_font) handle_error("Failed to load small TTF font");
     }
 
     loop_mode = LOOP_ALL;
@@ -461,7 +502,7 @@ int main(int /*argc*/, char** /*argv*/)
 
                     char title[256];
                     snprintf(title, sizeof(title), "%s", player->track_info().game);
-                    render_text(title, 10, 10, green);
+                    render_text_big(title, 10, 10, green);
 
                     char trackinfo[256];
                     long secs = player->track_info().length / 1000;
@@ -480,8 +521,8 @@ int main(int /*argc*/, char** /*argv*/)
                     int w = 0, h = 0;
                     
                     // Texto fijo "Loop: "
-                    render_text("Loop: ", x, y, green);
-                    TTF_SizeText(font, "Loop: ", &w, &h);
+                    render_text("Loop:", x, y, green);
+                    TTF_SizeText(font, "Loop:", &w, &h);
                     x += w;
                     
                     const char* loop_val = "";
@@ -494,8 +535,8 @@ int main(int /*argc*/, char** /*argv*/)
                     TTF_SizeText(font, loop_val, &w, &h);
                     x += w;
                     
-                    render_text(" Tempo: ", x, y, green);
-                    TTF_SizeText(font, " Tempo: ", &w, &h);
+                    render_text(" Tempo:", x, y, green);
+                    TTF_SizeText(font, " Tempo:", &w, &h);
                     x += w;
                     
                     char tempo_str[16];
@@ -504,13 +545,23 @@ int main(int /*argc*/, char** /*argv*/)
                     TTF_SizeText(font, tempo_str, &w, &h);
                     x += w;
                     
-                    render_text(" Echo: ", x, y, green);
-                    TTF_SizeText(font, " Echo: ", &w, &h);
+                    render_text(" Echo:", x, y, green);
+                    TTF_SizeText(font, " Echo:", &w, &h);
                     x += w;
                     
                     const char* echo_str = echo_disabled ? "OFF" : "ON";
                     render_text(echo_str, x, y, orange);
                     TTF_SizeText(font, echo_str, &w, &h);
+                    x += w;
+                    
+                    render_text(" Stereo:", x, y, green);
+                    TTF_SizeText(font, " Stereo:", &w, &h);
+                    x += w;
+
+                    char stereo_str[16];
+                    snprintf(stereo_str, sizeof(stereo_str), "%.1f", stereo_depth);
+                    render_text(stereo_str, x, y, orange);
+                    TTF_SizeText(font, stereo_str, &w, &h);
                     x += w;
                     
                     render_text(" ", x, y, green);
@@ -524,7 +575,7 @@ int main(int /*argc*/, char** /*argv*/)
                         x += w;
                     }
                     
-                    render_text("B:Back Y:Loop ST:Pause X:Echo L:Accu R:Res SE:Exit", info_x, info_y + 30, green);
+                    render_text_small("A:Str B:Back Y:Loop ST:Pause X:Echo L:Accu R:Res SE:Exit", info_x, info_y + 30, green);
 
                     // Present everything
                     SDL_RenderPresent(renderer);
@@ -566,6 +617,12 @@ int main(int /*argc*/, char** /*argv*/)
                                     selected_index = saved_index;
                                     draw_file_browser();
                                 }
+                                break;
+                            case SDL_CONTROLLER_BUTTON_A:
+                                stereo_depth += 0.2;
+                                if (stereo_depth > 1.0)
+                                stereo_depth = 0.0;
+                                player->set_stereo_depth(stereo_depth);
                                 break;
                             case SDL_CONTROLLER_BUTTON_Y:
                                 loop_mode = static_cast<LoopMode>((loop_mode + 1) % 3);
@@ -797,6 +854,7 @@ int main(int /*argc*/, char** /*argv*/)
 
     if (gamepad) SDL_GameControllerClose(gamepad);
     if (font) TTF_CloseFont(font);
+    if (small_font) TTF_CloseFont(small_font);
     if (renderer) SDL_DestroyRenderer(renderer);
     if (window) SDL_DestroyWindow(window);
     delete player;
