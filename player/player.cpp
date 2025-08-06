@@ -30,11 +30,15 @@ GUIDE block/unblock buttons and screen
 #include <dirent.h>
 #include <fcntl.h>
 #include <iostream>
+#include <assert.h>
+#include <ctype.h>
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
+#include <linux/input.h>
 #include <unistd.h>
 #include <vector>
+#include <pthread.h>
 
 #include "SDL.h"
 #include "SDL_ttf.h"
@@ -62,6 +66,77 @@ static TTF_Font* big_font = nullptr;
 static SDL_Window* window = nullptr;
 static SDL_Renderer* renderer = nullptr;
 
+// ----- MONITORING BATTERY AND VOLUME -----
+static int battery = 0; // battery percentage from /sys/class/power_supply/battery/capacity
+static int volume = 0;  // volume percentage from amixer output
+static Uint32 last_battery_update = 0;
+static const Uint32 battery_update_interval = 1000; // 1 second in ms
+
+// Function declarations
+static void* gpio_volume_thread(void* /*arg*/);
+
+// Helper: read battery percentage from sysfs
+int read_battery_percent() {
+    FILE* f = fopen("/sys/class/power_supply/battery/capacity", "r");
+    if (!f) return -1;
+
+    int percent = -1;
+    if (fscanf(f, "%d", &percent) != 1) {
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+
+    if (percent < 0) percent = 0;
+    else if (percent > 100) percent = 100;
+    return percent;
+}
+
+// Helper: read volume in percent via amixer command parsing
+int get_volume_percent_by_amixer() {
+    FILE* fp = popen("amixer get Master | awk -F'[][]' '/Left:/ { print $2; exit }'", "r");
+    if (!fp) return -1;
+
+    char buf[16];
+    int percent = -1;
+    if (fgets(buf, sizeof(buf), fp)) {
+        sscanf(buf, "%d%%", &percent);
+    }
+    pclose(fp);
+
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+
+    return percent;
+}
+
+// Thread to monitor GPIO keys of volume.
+void* gpio_volume_thread(void* /*arg*/) {
+    int fd = open("/dev/input/event1", O_RDONLY | O_NONBLOCK);
+    if (fd < 0) {
+        perror("No se pudo abrir /dev/input/event1");
+        pthread_exit(nullptr);
+    }
+    struct input_event ev;
+    while (1) {
+        ssize_t n = read(fd, &ev, sizeof(ev));
+        if (n == (ssize_t)sizeof(ev)) {
+            if (ev.type == EV_KEY && ev.value == 1) { // Solo evento PRESIONADO
+                if (ev.code == 115 || ev.code == 114) { // KEY_VOLUMEUP o KEY_VOLUMEDOWN
+                    usleep(150000);
+                    int new_vol = get_volume_percent_by_amixer();
+                    if (new_vol >= 0) {
+                        volume = new_vol;
+                    }
+                }
+            }
+        }
+        usleep(2000); // evitar CPU 100%
+    }
+    close(fd);
+    pthread_exit(nullptr);
+}
+
 // File browser structures
 struct Entry {
     std::string name;
@@ -81,7 +156,6 @@ static double tempo = 1.0;
 static double stereo_depth = 0.0;
 static bool accurate = false;
 static bool echo_disabled = false;
-static bool fading_out = true;
 static int muting_mask = 0;
 
 // Screen off state
@@ -102,12 +176,17 @@ static RunMode run_mode = MODE_SELECTION;
 // Forward declarations
 static void handle_error(const char*);
 static void render_text(const char* text, int x, int y, SDL_Color color);
+static void render_text_small(const char* text, int x, int y, SDL_Color color);
+static void render_text_big(const char* text, int x, int y, SDL_Color color);
 static bool is_directory(const std::string& path);
 static bool is_valid_music(const std::string& fname);
 static void list_directory(const std::string& path, bool reset_selection = true);
 static void draw_file_browser();
 static void on_enter_pressed();
 static void start_track(int trk, const char* path);
+static void clear_text_areas(SDL_Renderer* renderer);
+void hw_display_off(void);
+void hw_display_on(void);
 
 // Hardware functions to turn display on/off
 void hw_display_off(void)
@@ -169,6 +248,42 @@ static void render_text_big(const char* text, int x, int y, SDL_Color color)
     SDL_RenderCopy(renderer, texture, NULL, &rect);
     SDL_DestroyTexture(texture);
 }
+
+// Rendering function for battery and volume shown top right
+void render_status_monitor(int screen_width) {
+    SDL_Color green = {0, 255, 0, 255};
+    SDL_Color orange = {255, 165, 0, 255};
+
+    const char* bat_label = "BAT:";
+    const char* vol_label = "VOL:";
+    char bat_value[8], vol_value[8];
+    snprintf(bat_value, sizeof(bat_value), "%d%% ", battery);
+    snprintf(vol_value, sizeof(vol_value), "%d", volume);
+
+    int bat_label_w = 0, bat_value_w = 0;
+    int vol_label_w = 0, vol_value_w = 0;
+    int h = 0;
+
+    TTF_SizeText(font, bat_label, &bat_label_w, &h);
+    TTF_SizeText(font, bat_value, &bat_value_w, &h);
+    TTF_SizeText(font, vol_label, &vol_label_w, &h);
+    TTF_SizeText(font, vol_value, &vol_value_w, &h);
+
+    int pad = 0;
+    int total_w = bat_label_w + bat_value_w + vol_label_w + vol_value_w + pad * 3;
+
+    int x = screen_width - 10 - total_w;
+    int y = 10;
+
+    render_text(bat_label, x, y, green);
+    x += bat_label_w;
+    render_text(bat_value, x, y, orange);
+    x += bat_value_w + pad;
+    render_text(vol_label, x, y, green);
+    x += vol_label_w;
+    render_text(vol_value, x, y, orange);
+}
+
 
 // Check if path is a directory
 static bool is_directory(const std::string& path) {
@@ -373,6 +488,18 @@ int main(int /*argc*/, char** /*argv*/)
     handle_error(player->init());
     player->set_scope_buffer(scope_buf, scope_width * 2);
 
+    // Lee volumen inicial solo UNA vez al inicio
+    volume = get_volume_percent_by_amixer();
+    if (volume < 0)
+        volume = 0;
+
+    last_battery_update = SDL_GetTicks();
+
+    pthread_t gpio_thread;
+    if (pthread_create(&gpio_thread, nullptr, gpio_volume_thread, nullptr) != 0) {
+        fprintf(stderr, "Error inicializando hilo para GPIO volumen\n");
+    }
+
     bool running = true;
     SDL_GameController* gamepad = nullptr;
     if (SDL_NumJoysticks() > 0)
@@ -482,6 +609,13 @@ int main(int /*argc*/, char** /*argv*/)
             track = 1;
 
             while (running && run_mode == MODE_PLAYBACK) {
+                Uint32 now = SDL_GetTicks();
+                if (now - last_battery_update >= battery_update_interval) {
+                    int batt_val = read_battery_percent();
+                    if (batt_val >= 0) battery = batt_val;
+                    last_battery_update = now;
+                }
+
                 if (!screen_off && scope) {
 
                     // Clear entire screen
@@ -509,6 +643,8 @@ int main(int /*argc*/, char** /*argv*/)
                     snprintf(trackinfo, sizeof(trackinfo), "Track %d/%d: %s (%ld:%02ld)",
                              track, player->track_count(), player->track_info().song, secs / 60, secs % 60);
                     render_text(trackinfo, 10, 36, green);
+
+                    render_status_monitor(scope_width);
 
                     // Draw bottom right text: loop mode, tempo, pause status, controls info
                     SDL_Color orange = {255, 165, 0, 255};
@@ -626,15 +762,6 @@ int main(int /*argc*/, char** /*argv*/)
                                 break;
                             case SDL_CONTROLLER_BUTTON_Y:
                                 loop_mode = static_cast<LoopMode>((loop_mode + 1) % 3);
-                                {
-                                    const char* mode_str = nullptr;
-                                    switch (loop_mode) {
-                                        case LOOP_OFF: mode_str = "Loop OFF"; break;
-                                        case LOOP_ONE: mode_str = "Loop: 1 track"; break;
-                                        case LOOP_ALL: mode_str = "Infinite loop"; break;
-                                    }
-                                    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Loop Mode", mode_str, window);
-                                }
                                 break;
                             case SDL_CONTROLLER_BUTTON_X:
                                 echo_disabled = !echo_disabled;
