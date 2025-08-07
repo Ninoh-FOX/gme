@@ -48,8 +48,8 @@ char title[512] = "GME Music Player";
 // Window size and margins for text
 static const int scope_width = 640;
 static const int scope_height = 480;
-static const int margin_top = 65;
-static const int margin_bottom = 60;
+static const int margin_top = 96;
+static const int margin_bottom = 80;
 static const int scope_draw_height = scope_height - margin_top - margin_bottom;
 
 // Global objects
@@ -636,13 +636,13 @@ int main(int /*argc*/, char** /*argv*/)
 
                     char title[256];
                     snprintf(title, sizeof(title), "%s", player->track_info().game);
-                    render_text_big(title, 10, 10, green);
+                    render_text_big(title, 10, 35, green);
 
                     char trackinfo[256];
                     long secs = player->track_info().length / 1000;
                     snprintf(trackinfo, sizeof(trackinfo), "Track %d/%d: %s (%ld:%02ld)",
                              track, player->track_count(), player->track_info().song, secs / 60, secs % 60);
-                    render_text(trackinfo, 10, 36, green);
+                    render_text(trackinfo, 10, 65, green);
 
                     render_status_monitor(scope_width);
 
@@ -1001,7 +1001,6 @@ static void handle_error(const char* error)
         fprintf(stderr, "Error: %s\n", error);
         if (scope)
             scope->set_caption(error);
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error", error, nullptr);
         exit(EXIT_FAILURE);
     }
 }
