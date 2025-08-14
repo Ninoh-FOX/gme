@@ -21,8 +21,20 @@ set(UNRAR_NAMES_DEBUG unrar)
 
 # Try each search configuration.
 foreach(search ${_UNRAR_SEARCHES})
-  find_path(UNRAR_INCLUDE_DIR NAMES dll.hpp ${${search}} PATH_SUFFIXES include unrar)
+  find_path(UNRAR_INCLUDE_DIR_UNRAR_H NAMES unrar.h ${${search}} PATH_SUFFIXES include unrar)
 endforeach()
+if(UNRAR_INCLUDE_DIR_UNRAR_H)
+  set(RAR_HDR_UNRAR_H 1)
+  set(UNRAR_INCLUDE_DIR ${UNRAR_INCLUDE_DIR_UNRAR_H})
+else()
+  foreach(search ${_UNRAR_SEARCHES})
+    find_path(UNRAR_INCLUDE_DIR_DLL_HPP NAMES dll.hpp ${${search}} PATH_SUFFIXES include unrar)
+  endforeach()
+  if(UNRAR_INCLUDE_DIR_DLL_HPP)
+    set(RAR_HDR_DLL_HPP 1)
+    set(UNRAR_INCLUDE_DIR ${UNRAR_INCLUDE_DIR_DLL_HPP})
+  endif()
+endif()
 
 # Allow UNRAR_LIBRARY to be set manually, as the location of the unrar library
 if(NOT UNRAR_LIBRARY)
@@ -38,7 +50,7 @@ endif()
 unset(UNRAR_NAMES)
 unset(UNRAR_NAMES_DEBUG)
 
-mark_as_advanced(UNRAR_INCLUDE_DIR)
+mark_as_advanced(UNRAR_INCLUDE_DIR UNRAR_INCLUDE_DIR_UNRAR_H UNRAR_INCLUDE_DIR_DLL_HPP)
 
 if(UNRAR_INCLUDE_DIR AND EXISTS "${UNRAR_INCLUDE_DIR}/version.hpp")
     file(STRINGS "${UNRAR_INCLUDE_DIR}/version.hpp" UNRAR_H REGEX "^#define RARVER_.*$")
