@@ -39,6 +39,10 @@ GUIDE block/unblock buttons and screen
 #include <unistd.h>
 #include <vector>
 #include <pthread.h>
+#include <sys/ioctl.h>
+
+#define DISP_LCD_SET_BRIGHTNESS 0x102
+#define DISP_LCD_GET_BRIGHTNESS 0x103
 
 #include "SDL.h"
 #include "SDL_ttf.h"
@@ -46,10 +50,10 @@ GUIDE block/unblock buttons and screen
 char title[512] = "GME Music Player";
 
 // Window size and margins for text
-static const int scope_width = 640;
-static const int scope_height = 480;
-static const int margin_top = 96;
-static const int margin_bottom = 80;
+static const int scope_width = 1024;
+static const int scope_height = 768;
+static const int margin_top = 180;
+static const int margin_bottom = 160;
 static const int scope_draw_height = scope_height - margin_top - margin_bottom;
 
 // Global objects
@@ -66,18 +70,16 @@ static TTF_Font* big_font = nullptr;
 static SDL_Window* window = nullptr;
 static SDL_Renderer* renderer = nullptr;
 
-// ----- MONITORING BATTERY AND VOLUME -----
+// ----- MONITORING BATTERY -----
 static int battery = 0; // battery percentage from /sys/class/power_supply/battery/capacity
-static int volume = 0;  // volume percentage from amixer output
 static Uint32 last_battery_update = 0;
 static const Uint32 battery_update_interval = 1000; // 1 second in ms
 
-// Function declarations
-static void* gpio_volume_thread(void* /*arg*/);
+static int last_brightness = 72;
 
 // Helper: read battery percentage from sysfs
 int read_battery_percent() {
-    FILE* f = fopen("/sys/class/power_supply/battery/capacity", "r");
+    FILE* f = fopen("/sys/devices/platform/soc/7081400.s_twi/i2c-6/6-0034/axp2202-bat-power-supply.0/power_supply/axp2202-battery/capacity", "r");
     if (!f) return -1;
 
     int percent = -1;
@@ -92,58 +94,13 @@ int read_battery_percent() {
     return percent;
 }
 
-// Helper: read volume in percent via amixer command parsing
-int get_volume_percent_by_amixer() {
-    FILE* fp = popen("amixer get Master | awk -F'[][]' '/Left:/ { print $2; exit }'", "r");
-    if (!fp) return -1;
-
-    char buf[16];
-    int percent = -1;
-    if (fgets(buf, sizeof(buf), fp)) {
-        sscanf(buf, "%d%%", &percent);
-    }
-    pclose(fp);
-
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
-
-    return percent;
-}
-
-// Thread to monitor GPIO keys of volume.
-void* gpio_volume_thread(void* /*arg*/) {
-    int fd = open("/dev/input/event1", O_RDONLY | O_NONBLOCK);
-    if (fd < 0) {
-        perror("No se pudo abrir /dev/input/event1");
-        pthread_exit(nullptr);
-    }
-    struct input_event ev;
-    while (1) {
-        ssize_t n = read(fd, &ev, sizeof(ev));
-        if (n == (ssize_t)sizeof(ev)) {
-            if (ev.type == EV_KEY && ev.value == 1) { // Solo evento PRESIONADO
-                if (ev.code == 115 || ev.code == 114) { // KEY_VOLUMEUP o KEY_VOLUMEDOWN
-                    usleep(150000);
-                    int new_vol = get_volume_percent_by_amixer();
-                    if (new_vol >= 0) {
-                        volume = new_vol;
-                    }
-                }
-            }
-        }
-        usleep(2000); // evitar CPU 100%
-    }
-    close(fd);
-    pthread_exit(nullptr);
-}
-
 // File browser structures
 struct Entry {
     std::string name;
     bool is_dir;
 };
 static std::vector<Entry> entries;  // current listing
-static std::string current_path = "/roms/music"; // initial root directory
+static std::string current_path = "/mnt/SDCARD/Music"; // initial root directory
 static int selected_index = 0;
 static bool file_selected = false;
 static std::string selected_file_path;
@@ -188,25 +145,52 @@ static void clear_text_areas(SDL_Renderer* renderer);
 void hw_display_off(void);
 void hw_display_on(void);
 
-// Hardware functions to turn display on/off
-void hw_display_off(void)
-{
-	system("wlr-randr --output DSI-1 --off");
-    FILE *f;
-    if ((f = fopen("/sys/class/backlight/backlight/bl_power", "w"))) {
-        fprintf(f, "1\n");
+int get_brightness() {
+    int val = 72; // default si falla
+    int fd = open("/dev/disp", O_RDWR);
+    if (fd >= 0) {
+        unsigned long param[4] = {0UL, 0UL, 0UL, 0UL};
+        if (ioctl(fd, DISP_LCD_GET_BRIGHTNESS, &param) != -1) {
+            val = (int)param[1];
+        }
+        close(fd);
+    }
+    
+    if (val <= 0) 
+        val=72;
+
+    return val;
+}
+
+void set_brightness(int val) {
+    int fd = open("/dev/disp", O_RDWR);
+    if (fd >= 0) {
+        unsigned long param[4] = {0, val, 0, 0};
+        ioctl(fd, DISP_LCD_SET_BRIGHTNESS, &param);
+        close(fd);
+    }
+}
+
+void set_fb_blank(int val) {
+    FILE *f = fopen("/sys/class/graphics/fb0/blank", "w");
+    if (f) {
+        fprintf(f, "%d\n", val);
         fclose(f);
     }
 }
 
+// Hardware functions to turn display on/off
+void hw_display_off(void)
+{
+	last_brightness = get_brightness();
+    set_fb_blank(4);
+	set_brightness(0);
+}
+
 void hw_display_on(void)
 {
-	system("wlr-randr --output DSI-1 --on");
-    FILE *f;
-    if ((f = fopen("/sys/class/backlight/backlight/bl_power", "w"))) {
-        fprintf(f, "0\n");
-        fclose(f);
-    }
+	set_fb_blank(0);     
+    set_brightness(last_brightness);
 }
 
 // Render text using SDL_ttf
@@ -249,28 +233,23 @@ static void render_text_big(const char* text, int x, int y, SDL_Color color)
     SDL_DestroyTexture(texture);
 }
 
-// Rendering function for battery and volume shown top right
+// Rendering function for battery shown top right
 void render_status_monitor(int screen_width) {
     SDL_Color green = {0, 255, 0, 255};
     SDL_Color orange = {255, 165, 0, 255};
 
     const char* bat_label = "BAT:";
-    const char* vol_label = "VOL:";
-    char bat_value[8], vol_value[8];
+    char bat_value[8];
     snprintf(bat_value, sizeof(bat_value), "%d%% ", battery);
-    snprintf(vol_value, sizeof(vol_value), "%d", volume);
 
     int bat_label_w = 0, bat_value_w = 0;
-    int vol_label_w = 0, vol_value_w = 0;
     int h = 0;
 
     TTF_SizeText(font, bat_label, &bat_label_w, &h);
     TTF_SizeText(font, bat_value, &bat_value_w, &h);
-    TTF_SizeText(font, vol_label, &vol_label_w, &h);
-    TTF_SizeText(font, vol_value, &vol_value_w, &h);
 
     int pad = 0;
-    int total_w = bat_label_w + bat_value_w + vol_label_w + vol_value_w + pad * 3;
+    int total_w = bat_label_w + bat_value_w + pad * 3;
 
     int x = screen_width - 10 - total_w;
     int y = 10;
@@ -278,10 +257,6 @@ void render_status_monitor(int screen_width) {
     render_text(bat_label, x, y, green);
     x += bat_label_w;
     render_text(bat_value, x, y, orange);
-    x += bat_value_w + pad;
-    render_text(vol_label, x, y, green);
-    x += vol_label_w;
-    render_text(vol_value, x, y, orange);
 }
 
 
@@ -463,21 +438,21 @@ int main(int /*argc*/, char** /*argv*/)
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!renderer) handle_error("Failed to create SDL renderer");
 
-    font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24);
+    font = TTF_OpenFont("/mnt/SDCARD/App/gme/DejaVuSans.ttf", 36);
     if (!font) {
-        font = TTF_OpenFont("DejaVuSans.ttf", 24);
+        font = TTF_OpenFont("DejaVuSans.ttf", 36);
         if (!font) handle_error("Failed to load TTF font");
     }
     
-    big_font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28);
+    big_font = TTF_OpenFont("/mnt/SDCARD/App/gme/DejaVuSans.ttf", 40);
     if (!big_font) {
-        big_font = TTF_OpenFont("DejaVuSans.ttf", 28);
+        big_font = TTF_OpenFont("DejaVuSans.ttf", 40);
         if (!big_font) handle_error("Failed to load TTF font");
     }
     
-    small_font = TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22);
+    small_font = TTF_OpenFont("/mnt/SDCARD/App/gme/DejaVuSans.ttf", 32);
     if (!small_font) {
-        small_font = TTF_OpenFont("DejaVuSans.ttf", 22);
+        small_font = TTF_OpenFont("DejaVuSans.ttf", 32);
         if (!small_font) handle_error("Failed to load small TTF font");
     }
 
@@ -488,17 +463,7 @@ int main(int /*argc*/, char** /*argv*/)
     handle_error(player->init());
     player->set_scope_buffer(scope_buf, scope_width * 2);
 
-    // Lee volumen inicial solo UNA vez al inicio
-    volume = get_volume_percent_by_amixer();
-    if (volume < 0)
-        volume = 0;
-
     last_battery_update = SDL_GetTicks();
-
-    pthread_t gpio_thread;
-    if (pthread_create(&gpio_thread, nullptr, gpio_volume_thread, nullptr) != 0) {
-        fprintf(stderr, "Error inicializando hilo para GPIO volumen\n");
-    }
 
     bool running = true;
     SDL_GameController* gamepad = nullptr;
@@ -543,22 +508,22 @@ int main(int /*argc*/, char** /*argv*/)
                             if (selected_index >= (int)entries.size())
                                 selected_index = 0;
                             break;
-                        case SDL_CONTROLLER_BUTTON_A:
+                        case SDL_CONTROLLER_BUTTON_B:
                             on_enter_pressed();
                             if (file_selected) {
                                 run_mode = MODE_PLAYBACK;
                             }
                             break;
-                        case SDL_CONTROLLER_BUTTON_B:
+                        case SDL_CONTROLLER_BUTTON_A:
                             if (run_mode == MODE_SELECTION) {
-                                if (current_path != "/roms/music") {
+                                if (current_path != "/mnt/SDCARD/Music") {
                                     size_t pos = current_path.find_last_of('/');
-                                    if (pos == std::string::npos || current_path == "/roms/music") {
-                                        current_path = "/roms/music";
+                                    if (pos == std::string::npos || current_path == "/mnt/SDCARD/Music") {
+                                        current_path = "/mnt/SDCARD/Music";
                                     } else {
                                         current_path = current_path.substr(0, pos);
                                         if (current_path.empty())
-                                            current_path = "/roms/music";
+                                            current_path = "/mnt/SDCARD/Music";
                                     }
                                     list_directory(current_path, true); // Reset selection al subir directorio
                                 }
@@ -599,7 +564,7 @@ int main(int /*argc*/, char** /*argv*/)
                 scope = new Audio_Scope();
                 if (!scope) handle_error("Out of memory Audio_Scope");
                 // Initialize scope with reduced height to allow top and bottom margins for text
-                std::string err_msg = scope->init(scope_width, scope_draw_height);
+                std::string err_msg = scope->init(scope_width, scope_draw_height, window, renderer);
                 if (!err_msg.empty()) handle_error(err_msg.c_str());
             }
 
@@ -636,7 +601,7 @@ int main(int /*argc*/, char** /*argv*/)
 
                     char title[256];
                     snprintf(title, sizeof(title), "%s", player->track_info().game);
-                    render_text_big(title, 10, 35, green);
+                    render_text_big(title, 10, 20, green);
 
                     char trackinfo[256];
                     long secs = player->track_info().length / 1000;
@@ -711,7 +676,7 @@ int main(int /*argc*/, char** /*argv*/)
                         x += w;
                     }
                     
-                    render_text_small("A:Str B:Back Y:Loop ST:Pause X:Echo L:Accu R:Res SE:Exit", info_x, info_y + 30, green);
+                    render_text_small("A:Str  B:Back  Y:Loop  ST:Pause  X:Echo  L:Accu  R:Res  SE:Exit", info_x, info_y + 60, green);
 
                     // Present everything
                     SDL_RenderPresent(renderer);
@@ -738,7 +703,7 @@ int main(int /*argc*/, char** /*argv*/)
                                 hw_display_off();
                                 screen_off = true;
                                 break;
-                            case SDL_CONTROLLER_BUTTON_B:
+                            case SDL_CONTROLLER_BUTTON_A:
                                 if (run_mode == MODE_PLAYBACK) {
                                     player->stop();
                                     if (scope) {
@@ -754,16 +719,16 @@ int main(int /*argc*/, char** /*argv*/)
                                     draw_file_browser();
                                 }
                                 break;
-                            case SDL_CONTROLLER_BUTTON_A:
+                            case SDL_CONTROLLER_BUTTON_B:
                                 stereo_depth += 0.2;
                                 if (stereo_depth > 1.0)
                                 stereo_depth = 0.0;
                                 player->set_stereo_depth(stereo_depth);
                                 break;
-                            case SDL_CONTROLLER_BUTTON_Y:
+                            case SDL_CONTROLLER_BUTTON_X:
                                 loop_mode = static_cast<LoopMode>((loop_mode + 1) % 3);
                                 break;
-                            case SDL_CONTROLLER_BUTTON_X:
+                            case SDL_CONTROLLER_BUTTON_Y:
                                 echo_disabled = !echo_disabled;
                                 player->set_echo_disable(echo_disabled);
                                 break;
@@ -984,7 +949,6 @@ int main(int /*argc*/, char** /*argv*/)
     if (small_font) TTF_CloseFont(small_font);
     if (big_font) TTF_CloseFont(big_font);
     if (renderer) SDL_DestroyRenderer(renderer);
-    if (window) SDL_DestroyWindow(window);
     delete player;
     if (scope) {
         delete scope;

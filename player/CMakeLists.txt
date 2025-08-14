@@ -26,6 +26,7 @@ target_include_directories(gme_player PRIVATE
 set_property(TARGET gme_player PROPERTY CXX_STANDARD 11)
 set_property(TARGET gme_player PROPERTY CXX_STANDARD_REQUIRED ON)
 
+
 target_link_libraries(gme_player PRIVATE
     SDL2::SDL2
     SDL2_ttf::SDL2_ttf
@@ -43,9 +44,8 @@ if(GME_UNRAR)
     endif()
     target_include_directories(gme_player PRIVATE ${UNRAR_INCLUDE_DIRS})
     target_link_libraries(gme_player PRIVATE ${UNRAR_LIBRARIES})
-    if(NOT WIN32)
-      target_compile_options(gme_player PRIVATE -pthread)
-    endif()
+    target_compile_options(gme_player PRIVATE -pthread)
+	target_link_options(gme_player PRIVATE -pthread)
   else()
     message(STATUS "UnRAR library not found, RAR support disabled")
   endif()
