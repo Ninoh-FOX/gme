@@ -70,48 +70,37 @@ std::string check_sdl(const void *ptr, const char *explanation)
 // Audio_Scope
 // ===========
 Audio_Scope::Audio_Scope()
-    : window(nullptr), window_renderer(nullptr), scope_lines(nullptr), buf_size(0), scope_height(0), sample_shift(1), v_offset(0)
+    : external_window(nullptr), external_renderer(nullptr),
+      scope_lines(nullptr), buf_size(0), scope_height(0),
+      sample_shift(1), v_offset(0)
 {}
 
 Audio_Scope::~Audio_Scope()
 {
     free(scope_lines);
-    if (window_renderer)
-        SDL_DestroyRenderer(window_renderer);
-    if (window)
-        SDL_DestroyWindow(window);
 }
 
-std::string Audio_Scope::init(int width, int height)
+std::string Audio_Scope::init(int width, int height, SDL_Window* window, SDL_Renderer* renderer)
 {
     assert(height <= 16384);
-    assert(!scope_lines); // only call once
-
+    assert(!scope_lines); // solo llamar una vez
     scope_height = height;
     scope_lines = reinterpret_cast<SDL_Point*>(calloc(width, sizeof(SDL_Point)));
     if (!scope_lines)
         return "Failed to allocate memory for scope_lines";
     buf_size = width;
-
     for (sample_shift = 1; sample_shift < 14;)
     {
         if (((0x7FFFL * 2) >> sample_shift++) < height)
             break;
     }
-
     v_offset = (height - largest_power_of_2_within(height)) / 2;
 
-    window = SDL_CreateWindow("libgme sample player audio scope",
-                              SDL_WINDOWPOS_UNDEFINED,
-                              SDL_WINDOWPOS_UNDEFINED,
-                              width, height,
-                              SDL_WINDOW_BORDERLESS);
-    if (!window)
-        return "Failed to create SDL Audio_Scope window";
-    window_renderer = SDL_CreateRenderer(window, -1, 0);
-    if (!window_renderer)
-        return "Failed to create renderer for the window";
-    return ""; // success
+    // Guardar punteros externos sin crear ventana ni renderer
+    this->external_window = window;
+    this->external_renderer = renderer;
+
+    return ""; // éxito
 }
 
 const char* Audio_Scope::draw(const short* in, long count, int step)
@@ -119,12 +108,17 @@ const char* Audio_Scope::draw(const short* in, long count, int step)
     if (count >= buf_size)
         count = buf_size;
 
-    SDL_SetRenderDrawColor(window_renderer, 0, 0, 0, 255);
-    SDL_RenderClear(window_renderer);
+    // Limpiar solo el área de dibujo del scope
+    SDL_Rect scope_rect = { 0, 0, buf_size, scope_height };
+    SDL_SetRenderDrawColor(external_renderer, 0, 0, 0, 255);
+    SDL_RenderFillRect(external_renderer, &scope_rect);
+
+    // Dibujar la forma de onda
     render(in, count, step);
-    SDL_SetRenderDrawColor(window_renderer, 0, 255, 0, 255);
-    SDL_RenderDrawLines(window_renderer, scope_lines, (int)count);
-    SDL_RenderPresent(window_renderer);
+    SDL_SetRenderDrawColor(external_renderer, 0, 255, 0, 255);
+    SDL_RenderDrawLines(external_renderer, scope_lines, (int)count);
+
+    // NO llamar SDL_RenderPresent aquí
     return 0;
 }
 
@@ -140,6 +134,6 @@ void Audio_Scope::render(short const* in, long count, int step)
 
 void Audio_Scope::set_caption(const char* caption)
 {
-    if (window)
-        SDL_SetWindowTitle(window, caption);
+	if (external_window)
+        SDL_SetWindowTitle(external_window, caption);
 }

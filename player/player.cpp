@@ -48,8 +48,8 @@ char title[512] = "GME Music Player";
 // Window size and margins for text
 static const int scope_width = 640;
 static const int scope_height = 480;
-static const int margin_top = 96;
-static const int margin_bottom = 80;
+static const int margin_top = 60;
+static const int margin_bottom = 60;
 static const int scope_draw_height = scope_height - margin_top - margin_bottom;
 
 // Global objects
@@ -599,7 +599,7 @@ int main(int /*argc*/, char** /*argv*/)
                 scope = new Audio_Scope();
                 if (!scope) handle_error("Out of memory Audio_Scope");
                 // Initialize scope with reduced height to allow top and bottom margins for text
-                std::string err_msg = scope->init(scope_width, scope_draw_height);
+                std::string err_msg = scope->init(scope_width, scope_draw_height, window, renderer);
                 if (!err_msg.empty()) handle_error(err_msg.c_str());
             }
 
@@ -984,7 +984,6 @@ int main(int /*argc*/, char** /*argv*/)
     if (small_font) TTF_CloseFont(small_font);
     if (big_font) TTF_CloseFont(big_font);
     if (renderer) SDL_DestroyRenderer(renderer);
-    if (window) SDL_DestroyWindow(window);
     delete player;
     if (scope) {
         delete scope;

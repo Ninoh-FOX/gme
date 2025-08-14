@@ -12,7 +12,7 @@ class Audio_Scope {
 public:
 	// Initialize scope window of specified size. Height must be 16384 or less.
 	// If result is not an empty string, it is an error message
-	std::string init( int width, int height );
+	std::string init(int width, int height, SDL_Window* window, SDL_Renderer* renderer);
 
 	// Draw at most 'count' samples from 'in', skipping 'step' samples after
 	// each sample drawn. Step should be 2 but wouldn't be hard to adapt
@@ -26,8 +26,8 @@ public:
 
 private:
 	typedef unsigned char byte;
-	SDL_Window* window;
-	SDL_Renderer* window_renderer;
+	SDL_Window* external_window = nullptr;
+    SDL_Renderer* external_renderer = nullptr;
 	SDL_Point* scope_lines = nullptr; // lines to be drawn each frame
 	int buf_size;
 	int scope_height;
